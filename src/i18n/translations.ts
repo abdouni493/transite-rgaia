@@ -242,6 +242,9 @@ export const fr = {
   declarationNoHint: 'Numéro attribué automatiquement à la création',
   declarationNoManualHint:
     'Pré-rempli avec le prochain numéro libre — modifiable si votre dossier porte un autre numéro.',
+  declarationNoOptionalHint:
+    'Facultatif — laissez vide et le n° {no} sera attribué automatiquement. Il pourra être saisi plus tard, au dédouanement.',
+  declarationNoAutoPlaceholder: 'Auto · {no}',
   declarationNoTaken: 'Ce numéro de déclaration est déjà utilisé',
   step: 'Étape',
   stepIdentity: 'Identité',
@@ -420,6 +423,23 @@ export const fr = {
   markAs: 'Marquer comme',
   documents: 'Documents',
   searchCustomsPlaceholder: 'Rechercher par n° de déclaration, nom, châssis, conteneur ou client…',
+  deliveryReceipt: 'Accusé de réception',
+  deliveryReceiptTitle: 'Accusé de réception du véhicule',
+  printDeliveryReceipt: 'Imprimer l\'accusé de réception',
+  printDeliveryReceiptQuestion: 'Imprimer l\'accusé de réception maintenant ?',
+  printDeliveryReceiptHint:
+    'Le véhicule a été remis à {name}. Voulez-vous imprimer l\'accusé de réception ?',
+  deliveryDate: 'Date de remise',
+  deliveredTo: 'Remis à',
+  deliveryAckSection: 'Attestation de remise',
+  deliveryAckStatement:
+    'Je soussigné(e) {name} reconnais avoir reçu de {company} le véhicule désigné ci-dessus, en bon état apparent et accompagné de l\'ensemble de ses documents de dédouanement. Le présent document vaut accusé de réception et décharge pour ce véhicule.',
+  saisieDeclarationTitle: 'Saisie de la déclaration',
+  saisieDeclarationSubtitle: '{name} · véhicule {car}',
+  saisieDeclarationHint:
+    'Numéro actuel du dossier — corrigez-le s\'il diffère du numéro porté sur la déclaration douanière.',
+  saisieDeclarationConfirm: 'Enregistrer et marquer « Saisie »',
+  currentDeclarationNo: 'N° actuel',
 
   /* -- payment tracking -- */
   paymentTrackingSubtitle: 'Versements par conteneur',
@@ -939,6 +959,9 @@ export const ar: Record<TranslationKey, string> = {
   declarationNo: 'رقم التصريح',
   declarationNoHint: 'رقم يُمنح تلقائياً عند الإنشاء',
   declarationNoManualHint: 'مملوء مسبقاً بأول رقم متاح — يمكن تعديله إذا كان ملفك يحمل رقماً آخر.',
+  declarationNoOptionalHint:
+    'اختياري — اتركه فارغاً ليُمنح الرقم {no} تلقائياً. يمكن إدخاله لاحقاً عند التخليص.',
+  declarationNoAutoPlaceholder: 'تلقائي · {no}',
   declarationNoTaken: 'رقم التصريح هذا مستعمل بالفعل',
   step: 'الخطوة',
   stepIdentity: 'الهوية',
@@ -1109,6 +1132,21 @@ export const ar: Record<TranslationKey, string> = {
   markAs: 'تعيين كـ',
   documents: 'الوثائق',
   searchCustomsPlaceholder: 'ابحث برقم التصريح أو الاسم أو رقم الهيكل أو الحاوية أو العميل…',
+  deliveryReceipt: 'وصل استلام',
+  deliveryReceiptTitle: 'وصل استلام المركبة',
+  printDeliveryReceipt: 'طباعة وصل الاستلام',
+  printDeliveryReceiptQuestion: 'طباعة وصل الاستلام الآن؟',
+  printDeliveryReceiptHint: 'سُلّمت المركبة إلى {name}. هل تريد طباعة وصل الاستلام؟',
+  deliveryDate: 'تاريخ التسليم',
+  deliveredTo: 'سُلّمت إلى',
+  deliveryAckSection: 'إقرار بالاستلام',
+  deliveryAckStatement:
+    'أقر أنا الموقّع أدناه {name} بأنني استلمت من {company} المركبة المذكورة أعلاه بحالة ظاهرية جيدة، مرفقةً بكامل وثائق التخليص الجمركي. يُعتبر هذا المستند وصل استلام وإبراء ذمة بخصوص هذه المركبة.',
+  saisieDeclarationTitle: 'إدخال رقم التصريح',
+  saisieDeclarationSubtitle: '{name} · المركبة {car}',
+  saisieDeclarationHint: 'الرقم الحالي للملف — عدّله إذا كان مخالفاً للرقم المدوّن في التصريح الجمركي.',
+  saisieDeclarationConfirm: 'حفظ وتعيين الحالة «مُدخل»',
+  currentDeclarationNo: 'الرقم الحالي',
 
   paymentTrackingSubtitle: 'التحصيلات حسب الحاوية',
   selectPrincipalForPayment: 'إلى أي عميل رئيسي تُنسب هذه الدفعة؟',

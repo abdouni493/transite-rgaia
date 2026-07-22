@@ -9,6 +9,7 @@ import {
   MapPin,
   MoreVertical,
   Phone,
+  Printer,
   UserRound,
   Wallet,
 } from 'lucide-react';
@@ -41,6 +42,7 @@ import {
   cx,
 } from '../components/ui/primitives';
 import { DropdownMenu, useConfirm, useToast } from '../components/ui/overlays';
+import { DeliveryReceiptDialog } from '../components/print/DeliveryReceiptPrint';
 import {
   CUSTOMS_META,
   CustomsBadge,
@@ -71,6 +73,7 @@ export function Customs() {
 
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
+  const [receiptFor, setReceiptFor] = useState<SecondaryClient | null>(null);
 
   /* ---------- enriched rows ---------- */
   const rows = useMemo<Row[]>(
@@ -123,6 +126,9 @@ export function Customs() {
       );
   }, [rows, query, filter]);
 
+  const canChange = can('customs', 'changeStatus');
+  const canPrint = can('customs', 'print');
+
   /* ---------- status change ---------- */
   const changeStatus = async (car: SecondaryClient, status: CustomsStatus) => {
     const ok = await confirm({
@@ -135,9 +141,21 @@ export function Customs() {
     if (!ok) return;
     updateSecondary(car.id, { customsStatus: status });
     toast.success(t('statusChanged'));
-  };
 
-  const canChange = can('customs', 'changeStatus');
+    /* Handing a car to its owner is the moment the delivery receipt exists to
+       mark — offer to print it straight away. */
+    if (status === 'remis_client' && canPrint) {
+      const yes = await confirm({
+        title: t('printDeliveryReceiptQuestion'),
+        message: t('printDeliveryReceiptHint', { name: fullName(car) }),
+        confirmLabel: t('printNow'),
+        cancelLabel: t('later'),
+        tone: 'brand',
+        icon: <Printer size={26} />,
+      });
+      if (yes) setReceiptFor({ ...car, customsStatus: status });
+    }
+  };
 
   return (
     <div>
@@ -265,12 +283,15 @@ export function Customs() {
                   row={r}
                   fm={fm}
                   onChangeStatus={canChange ? changeStatus : undefined}
+                  onPrintReceipt={canPrint ? () => setReceiptFor(r.car) : undefined}
                 />
               </motion.div>
             ))}
           </AnimatePresence>
         </motion.div>
       )}
+
+      <DeliveryReceiptDialog car={receiptFor} onClose={() => setReceiptFor(null)} />
     </div>
   );
 }
@@ -366,13 +387,16 @@ function CarCard({
   row,
   fm,
   onChangeStatus,
+  onPrintReceipt,
 }: {
   row: Row;
   fm: (n: number) => string;
   onChangeStatus?: (car: SecondaryClient, status: CustomsStatus) => void;
+  onPrintReceipt?: () => void;
 }) {
   const { t, lang } = useI18n();
   const { car, principal, container } = row;
+  const delivered = car.customsStatus === 'remis_client';
 
   return (
     <Card className="card-hover flex h-full flex-col">
@@ -470,12 +494,26 @@ function CarCard({
       </div>
 
       {/* footer */}
-      <div className="flex flex-wrap items-center justify-between gap-2 rounded-b-2xl border-t border-ink-100 bg-ink-50/60 p-3">
-        <CustomsBadge status={car.customsStatus} />
-        <span className="flex items-center gap-1.5 text-2xs font-semibold text-ink-400">
-          <UserRound size={11} />
-          {t('createdOn')} {formatDate(car.createdAt, lang)}
-        </span>
+      <div className="rounded-b-2xl border-t border-ink-100 bg-ink-50/60 p-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <CustomsBadge status={car.customsStatus} />
+          <span className="flex items-center gap-1.5 text-2xs font-semibold text-ink-400">
+            <UserRound size={11} />
+            {t('createdOn')} {formatDate(car.createdAt, lang)}
+          </span>
+        </div>
+        {/* the delivery receipt only makes sense once the car is handed over */}
+        {delivered && onPrintReceipt && (
+          <Button
+            size="sm"
+            variant="soft"
+            icon={<Printer size={15} />}
+            onClick={onPrintReceipt}
+            className="mt-3 w-full"
+          >
+            {t('printDeliveryReceipt')}
+          </Button>
+        )}
       </div>
     </Card>
   );

@@ -332,7 +332,7 @@ export const PAGE_ACTIONS: PageDef[] = [
   },
   {
     key: 'customs',
-    actions: [{ key: 'view' }, { key: 'changeStatus', sensitive: true }],
+    actions: [{ key: 'view' }, { key: 'changeStatus', sensitive: true }, { key: 'print' }],
   },
   {
     key: 'paymentTracking',
