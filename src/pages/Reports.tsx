@@ -37,7 +37,7 @@ import {
   toISO,
   todayISO,
 } from '../lib/format';
-import { CUSTOMS_STATUSES } from '../lib/types';
+import { CUSTOMS_STATUSES, MAX_CARS_PER_CONTAINER } from '../lib/types';
 import type { AppState } from '../lib/types';
 import {
   Button,
@@ -707,7 +707,7 @@ function buildReport(s: AppState, from: string, to: string, t: Translate, lang: 
         breakdown: [{ label: t('totalCars'), value: fn(s.secondaryClients.length) }],
         items: s.containers.map((c) => ({
           date: c.createdAt,
-          label: `${c.name} · ${carsOfContainer(s, c.id).length}/4`,
+          label: `${c.name} · ${carsOfContainer(s, c.id).length}/${MAX_CARS_PER_CONTAINER}`,
           amount: containerMoney(s, c.id).total,
         })),
       }),
@@ -740,7 +740,7 @@ function buildReport(s: AppState, from: string, to: string, t: Translate, lang: 
         ],
         items: (newContainers.length ? newContainers : s.containers).map((c) => ({
           date: c.createdAt,
-          label: `${c.name} · ${carsOfContainer(s, c.id).length}/4`,
+          label: `${c.name} · ${carsOfContainer(s, c.id).length}/${MAX_CARS_PER_CONTAINER}`,
         })),
       }),
       stat({
@@ -750,14 +750,14 @@ function buildReport(s: AppState, from: string, to: string, t: Translate, lang: 
         format: 'percent',
         tone: 'sky',
         icon: <Percent size={20} />,
-        formula: `${t('rp_fillRate')} = Σ (${t('occupancy')} ÷ 4) ÷ ${t('rp_totalContainers')} × 100`,
+        formula: `${t('rp_fillRate')} = Σ (${t('occupancy')} ÷ ${MAX_CARS_PER_CONTAINER}) ÷ ${t('rp_totalContainers')} × 100`,
         breakdown: [
           { label: t('rp_totalContainers'), value: fn(fillSource.length) },
           { label: t('rp_fillRate'), value: formatPercent(fillRate, lang) },
         ],
         items: fillSource.map((c) => ({
           date: c.createdAt,
-          label: `${c.name} · ${containerFill(s, c.id).count}/4 (${formatPercent(containerFill(s, c.id).percent, lang)})`,
+          label: `${c.name} · ${containerFill(s, c.id).count}/${MAX_CARS_PER_CONTAINER} (${formatPercent(containerFill(s, c.id).percent, lang)})`,
         })),
       }),
     ],

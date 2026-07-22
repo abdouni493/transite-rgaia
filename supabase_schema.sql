@@ -291,7 +291,7 @@ create table public.principal_clients (
 
 create index principal_clients_name_idx on public.principal_clients (last_name, first_name);
 
--- ---- containers (max 4 cars each — enforced by trigger below) --------------
+-- ---- containers (max 5 cars each — enforced by trigger below) --------------
 create table public.containers (
   id           uuid primary key default gen_random_uuid(),
   name         text not null,
@@ -302,8 +302,12 @@ create table public.containers (
 );
 
 -- ---- secondary clients (one person + one car + one container + one price) --
+-- Sequential business number printed on every document: 0001, 0002, ...
+create sequence public.declaration_no_seq start 1;
+
 create table public.secondary_clients (
   id                  uuid primary key default gen_random_uuid(),
+  declaration_no      integer not null default nextval('public.declaration_no_seq'),
   first_name          text not null,
   last_name           text not null,
   address             text not null default '',
@@ -318,10 +322,12 @@ create table public.secondary_clients (
   created_at          timestamptz not null default now()
 );
 
+create unique index secondary_clients_declaration_no_idx
+  on public.secondary_clients (declaration_no);
 create index secondary_clients_principal_idx on public.secondary_clients (principal_client_id);
 create index secondary_clients_container_idx on public.secondary_clients (container_id);
 
--- a container never holds more than 4 vehicles
+-- a container never holds more than 5 vehicles
 create or replace function public.enforce_container_capacity()
 returns trigger language plpgsql as $$
 declare n integer;
@@ -330,8 +336,8 @@ begin
     from public.secondary_clients
    where container_id = new.container_id
      and id <> coalesce(new.id, '00000000-0000-0000-0000-000000000000'::uuid);
-  if n >= 4 then
-    raise exception 'Container % already holds 4 vehicles', new.container_id;
+  if n >= 5 then
+    raise exception 'Container % already holds 5 vehicles', new.container_id;
   end if;
   return new;
 end $$;
@@ -341,8 +347,12 @@ create trigger secondary_clients_capacity
   for each row execute function public.enforce_container_capacity();
 
 -- ---- payments: recorded per (container, principal client) ------------------
+-- Versement reference printed on every receipt: 00001, 00002, ...
+create sequence public.versement_ref_seq start 1;
+
 create table public.payments (
   id                  uuid primary key default gen_random_uuid(),
+  ref_no              integer not null default nextval('public.versement_ref_seq'),
   container_id        uuid not null references public.containers (id) on delete cascade,
   principal_client_id uuid not null references public.principal_clients (id) on delete cascade,
   amount              numeric(14,2) not null check (amount > 0),
@@ -353,6 +363,7 @@ create table public.payments (
   created_at          timestamptz not null default now()
 );
 
+create unique index payments_ref_no_idx on public.payments (ref_no);
 create index payments_container_idx on public.payments (container_id);
 create index payments_principal_idx on public.payments (principal_client_id);
 create index payments_date_idx      on public.payments (date desc);

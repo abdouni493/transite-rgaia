@@ -26,6 +26,26 @@ export function formatMoneyShort(value: number, lang: Lang = 'fr', currency = 'D
   return `${f(value, 0)} ${currency}`;
 }
 
+/**
+ * Business reference numbers are always shown zero-padded and latin-digit, in
+ * both languages: a "numéro de déclaration" reads 0001, a versement reference
+ * reads 00001. Never localised — these are printed and searched verbatim.
+ */
+export function formatDeclarationNo(n: number): string {
+  return String(Math.max(0, Math.trunc(n || 0))).padStart(4, '0');
+}
+
+export function formatVersementRef(n: number): string {
+  return String(Math.max(0, Math.trunc(n || 0))).padStart(5, '0');
+}
+
+/** True when a search box entry points at this reference ("12", "0012", "#0012"). */
+export function matchesRef(ref: string, query: string): boolean {
+  const q = query.trim().replace(/^#/, '');
+  if (!q || !/^\d+$/.test(q)) return false;
+  return ref.includes(q) || String(Number(ref)) === String(Number(q));
+}
+
 export function formatDate(iso: string | undefined, lang: Lang = 'fr'): string {
   if (!iso) return '—';
   const d = new Date(iso.length <= 10 ? `${iso}T00:00:00` : iso);

@@ -34,10 +34,18 @@ import {
   carMoney,
   containerFill,
   fullName,
+  nextDeclarationNo,
   principalMoney,
   secondariesOfPrincipal,
 } from '../lib/selectors';
-import { formatDate, formatMoney, formatMoneyShort, norm } from '../lib/format';
+import {
+  formatDate,
+  formatDeclarationNo,
+  formatMoney,
+  formatMoneyShort,
+  matchesRef,
+  norm,
+} from '../lib/format';
 import { CUSTOMS_STATUSES, MAX_CARS_PER_CONTAINER } from '../lib/types';
 import type {
   Container,
@@ -161,7 +169,13 @@ export function SecondaryClients() {
       .filter((r) => (filter === 'all' ? true : r.car.customsStatus === filter))
       .filter((r) => {
         if (!q) return true;
-        return norm(fullName(r.car)).includes(q) || norm(r.car.address).includes(q);
+        // The declaration number is the client's business id, so it is the
+        // first thing the search box answers to.
+        return (
+          matchesRef(formatDeclarationNo(r.car.declarationNo), query) ||
+          norm(fullName(r.car)).includes(q) ||
+          norm(r.car.address).includes(q)
+        );
       })
       .sort(
         (a, b) =>
@@ -389,6 +403,13 @@ function SecondaryCard({
       <div className="flex items-start gap-3 border-b border-ink-100 bg-grad-brand-soft p-4">
         <Avatar name={fullName(car)} gradient="from-brand-800 to-ocean-400" />
         <div className="min-w-0 flex-1">
+          <p
+            className="flex items-center gap-1 font-mono text-2xs font-extrabold tracking-wide text-brand-600"
+            title={t('declarationNo')}
+          >
+            <Hash size={10} className="shrink-0" />
+            {formatDeclarationNo(car.declarationNo)}
+          </p>
           <h3 className="truncate text-[15px] font-extrabold text-ink-900">{fullName(car)}</h3>
           <p className="mt-0.5 flex items-start gap-1.5 text-xs font-semibold text-ink-500">
             <MapPin size={12} className="mt-0.5 shrink-0" />
@@ -674,8 +695,10 @@ function SecondaryDialog({
     const e = validate(4);
     setErrors(e);
     if (Object.keys(e).length) return;
-    addSecondary(payload());
-    toast.success(t('secondaryCreated'));
+    const created = addSecondary(payload());
+    toast.success(
+      `${t('secondaryCreated')} · ${t('declarationNo')} ${formatDeclarationNo(created.declarationNo)}`,
+    );
     onClose();
   };
 
@@ -1036,6 +1059,13 @@ function SecondaryDialog({
 
   const review = (
     <div className="grid gap-2.5 sm:grid-cols-2">
+      <DataPoint
+        label={t('declarationNo')}
+        value={formatDeclarationNo(editing ? editing.declarationNo : nextDeclarationNo(state))}
+        icon={<Hash size={11} />}
+        mono
+        className="sm:col-span-2"
+      />
       <DataPoint label={t('fullName')} value={`${form.firstName} ${form.lastName}`} icon={<UserRound size={11} />} />
       <DataPoint label={t('address')} value={form.address || '—'} icon={<MapPin size={11} />} />
       <DataPoint
@@ -1246,7 +1276,7 @@ function SecondaryDetail({
       size="xl"
       icon={<CarIcon size={20} />}
       title={fullName(car)}
-      subtitle={`${car.car.brand} ${car.car.name} · ${car.car.chassisNumber}`}
+      subtitle={`${t('declarationNo')} ${formatDeclarationNo(car.declarationNo)} · ${car.car.brand} ${car.car.name} · ${car.car.chassisNumber}`}
       footer={
         <div className="flex flex-wrap items-center justify-between gap-2">
           <span className="text-xs font-semibold text-ink-500">
@@ -1284,6 +1314,13 @@ function SecondaryDetail({
           {tab === 'info' && (
             <div className="space-y-4">
               <div className="grid gap-3 sm:grid-cols-2">
+                <DataPoint
+                  label={t('declarationNo')}
+                  value={formatDeclarationNo(car.declarationNo)}
+                  icon={<Hash size={11} />}
+                  mono
+                  className="sm:col-span-2"
+                />
                 <DataPoint label={t('firstName')} value={car.firstName} />
                 <DataPoint label={t('lastName')} value={car.lastName} />
                 <DataPoint

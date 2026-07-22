@@ -55,7 +55,7 @@ import {
 } from '../lib/format';
 import { CUSTOMS_META, PageHeader, StatCard, MoneySummary } from '../components/shared';
 import { Avatar, Button, Card, EmptyState, ProgressBar, SectionTitle, StaggerItem, StaggerList, cx } from '../components/ui/primitives';
-import { CUSTOMS_STATUSES, type PageKey } from '../lib/types';
+import { CUSTOMS_STATUSES, MAX_CARS_PER_CONTAINER, type PageKey } from '../lib/types';
 
 const SEV_STYLE: Record<Severity, { chip: string; icon: typeof AlertTriangle; bar: string }> = {
   high: { chip: 'bg-rose-50 text-rose-700 ring-rose-200', icon: AlertTriangle, bar: 'bg-grad-rose' },
@@ -484,14 +484,16 @@ export function Dashboard({ onNavigate }: { onNavigate: (p: PageKey) => void }) 
                   <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
                   <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false} />
                   <YAxis
-                    domain={[0, 4]}
-                    ticks={[0, 1, 2, 3, 4]}
+                    domain={[0, MAX_CARS_PER_CONTAINER]}
+                    ticks={Array.from({ length: MAX_CARS_PER_CONTAINER + 1 }, (_, i) => i)}
                     tick={{ fontSize: 11, fill: '#64748b' }}
                     axisLine={false}
                     tickLine={false}
                   />
                   <Tooltip
-                    formatter={(v) => [`${v} / 4`, t('totalCars')] as [string, string]}
+                    formatter={(v) =>
+                      [`${v} / ${MAX_CARS_PER_CONTAINER}`, t('totalCars')] as [string, string]
+                    }
                     contentStyle={{ borderRadius: 14, border: '1px solid #e2e8f0', fontSize: 12, fontWeight: 600 }}
                     cursor={{ fill: 'rgba(20,184,166,0.06)' }}
                   />
@@ -503,7 +505,16 @@ export function Dashboard({ onNavigate }: { onNavigate: (p: PageKey) => void }) 
                     animationDuration={800}
                   >
                     {fills.map((f, i) => (
-                      <Cell key={i} fill={f.cars >= 4 ? '#10b981' : f.cars === 0 ? '#cbd5e1' : '#14b8a6'} />
+                      <Cell
+                        key={i}
+                        fill={
+                          f.cars >= MAX_CARS_PER_CONTAINER
+                            ? '#10b981'
+                            : f.cars === 0
+                              ? '#cbd5e1'
+                              : '#14b8a6'
+                        }
+                      />
                     ))}
                   </Bar>
                 </BarChart>

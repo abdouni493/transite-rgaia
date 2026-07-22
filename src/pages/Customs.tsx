@@ -15,7 +15,14 @@ import {
 import { useI18n } from '../i18n/I18nProvider';
 import { useStore } from '../store/AppStore';
 import { fullName } from '../lib/selectors';
-import { formatDate, formatMoney, formatMoneyShort, norm } from '../lib/format';
+import {
+  formatDate,
+  formatDeclarationNo,
+  formatMoney,
+  formatMoneyShort,
+  matchesRef,
+  norm,
+} from '../lib/format';
 import { CUSTOMS_STATUSES } from '../lib/types';
 import type { Container, CustomsStatus, PrincipalClient, SecondaryClient } from '../lib/types';
 import {
@@ -100,6 +107,7 @@ export function Customs() {
       .filter((r) => {
         if (!q) return true;
         return (
+          matchesRef(formatDeclarationNo(r.car.declarationNo), query) ||
           norm(fullName(r.car)).includes(q) ||
           norm(r.car.car.chassisNumber).includes(q) ||
           norm(`${r.car.car.brand} ${r.car.car.name}`).includes(q) ||
@@ -401,6 +409,12 @@ function CarCard({
       {/* body */}
       <div className="flex-1 space-y-3 p-4">
         <div className="grid grid-cols-2 gap-2">
+          <DataPoint
+            label={t('declarationNo')}
+            value={formatDeclarationNo(car.declarationNo)}
+            icon={<Hash size={11} />}
+            mono
+          />
           <DataPoint
             label={t('car')}
             value={`${car.car.brand} ${car.car.name}`}

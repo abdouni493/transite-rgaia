@@ -1,5 +1,5 @@
 /* ============================================================
-   Containers — max 4 cars each. Money is always read from the
+   Containers — max 5 cars each. Money is always read from the
    selectors so container totals can never drift.
    ============================================================ */
 
@@ -33,7 +33,14 @@ import {
   paymentsOfContainer,
   principalName,
 } from '../lib/selectors';
-import { formatDate, formatMoney, formatMoneyShort, norm } from '../lib/format';
+import {
+  formatDate,
+  formatDeclarationNo,
+  formatMoney,
+  formatMoneyShort,
+  formatVersementRef,
+  norm,
+} from '../lib/format';
 import { MAX_CARS_PER_CONTAINER } from '../lib/types';
 import type { Container, Payment } from '../lib/types';
 import {
@@ -704,6 +711,7 @@ function ContainerDetail({
                   <table className="w-full min-w-[44rem] text-sm">
                     <thead>
                       <tr className="border-b border-ink-200 bg-ink-50 text-2xs uppercase tracking-wide text-ink-500">
+                        <th className="px-4 py-2.5 text-start font-bold">{t('declarationNo')}</th>
                         <th className="px-4 py-2.5 text-start font-bold">{t('secondaryClient')}</th>
                         <th className="px-4 py-2.5 text-start font-bold">{t('car')}</th>
                         <th className="px-4 py-2.5 text-start font-bold">{t('principalClient')}</th>
@@ -714,6 +722,9 @@ function ContainerDetail({
                     <tbody className="divide-y divide-ink-100">
                       {data.cars.map((sc) => (
                         <tr key={sc.id} className="transition-colors hover:bg-ink-50/70">
+                          <td className="whitespace-nowrap px-4 py-2.5 font-mono text-xs font-extrabold tabular-nums text-brand-700">
+                            {formatDeclarationNo(sc.declarationNo)}
+                          </td>
                           <td className="px-4 py-2.5">
                             <p className="text-[13px] font-bold text-ink-900">{fullName(sc)}</p>
                             <p className="mt-0.5 flex items-center gap-1 text-2xs text-ink-500">
@@ -743,7 +754,7 @@ function ContainerDetail({
                     </tbody>
                     <tfoot>
                       <tr className="border-t-2 border-ink-200 bg-ink-50">
-                        <td colSpan={4} className="px-4 py-2.5 text-[13px] font-bold text-ink-700">
+                        <td colSpan={5} className="px-4 py-2.5 text-[13px] font-bold text-ink-700">
                           {t('totalAmount')}
                         </td>
                         <td className="px-4 py-2.5 text-end text-sm font-extrabold tabular-nums text-ink-900">
@@ -777,6 +788,7 @@ function ContainerDetail({
                   <table className="w-full min-w-[42rem] text-sm">
                     <thead>
                       <tr className="border-b border-ink-200 bg-ink-50 text-2xs uppercase tracking-wide text-ink-500">
+                        <th className="px-4 py-2.5 text-start font-bold">{t('versementRefShort')}</th>
                         <th className="px-4 py-2.5 text-start font-bold">{t('date')}</th>
                         <th className="px-4 py-2.5 text-start font-bold">{t('principalClient')}</th>
                         <th className="px-4 py-2.5 text-start font-bold">{t('description')}</th>
@@ -788,6 +800,9 @@ function ContainerDetail({
                     <tbody className="divide-y divide-ink-100">
                       {data.payments.map((p) => (
                         <tr key={p.id} className="transition-colors hover:bg-ink-50/70">
+                          <td className="whitespace-nowrap px-4 py-2.5 font-mono text-xs font-extrabold tabular-nums text-brand-700">
+                            {formatVersementRef(p.refNo)}
+                          </td>
                           <td className="whitespace-nowrap px-4 py-2.5 text-xs font-semibold tabular-nums text-ink-600">
                             {formatDate(p.date, lang)} · {p.time}
                           </td>
@@ -815,7 +830,7 @@ function ContainerDetail({
                     </tbody>
                     <tfoot>
                       <tr className="border-t-2 border-ink-200 bg-ink-50">
-                        <td colSpan={4} className="px-4 py-2.5 text-[13px] font-bold text-ink-700">
+                        <td colSpan={5} className="px-4 py-2.5 text-[13px] font-bold text-ink-700">
                           {t('totalPaid')}
                         </td>
                         <td className="px-4 py-2.5 text-end text-sm font-extrabold tabular-nums text-emerald-700">

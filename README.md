@@ -13,6 +13,9 @@ de démonstration n'est embarquée dans l'application.
 
 1. Ouvrir le projet Supabase → **SQL Editor** → **New query**.
 2. Coller l'intégralité de [`supabase_schema.sql`](./supabase_schema.sql) → **Run**.
+   Base déjà en service ? Jouer plutôt
+   [`supabase_migration_versement.sql`](./supabase_migration_versement.sql), qui
+   passe la capacité à 5 véhicules et numérote l'existant.
 3. **Authentication → Providers → Email** : laisser *Confirm email* **désactivé**
    (l'application connecte l'utilisateur immédiatement après la création du compte).
 
@@ -28,7 +31,8 @@ Le script crée :
 
 Plus : le déclencheur `handle_new_user` (auth → `profiles`), les fonctions
 `is_admin()`, `email_for_identifier()`, `my_permissions()`, `has_action()`,
-la contrainte « 4 véhicules maximum par conteneur », et les politiques RLS.
+la contrainte « 5 véhicules maximum par conteneur », les séquences de
+numérotation (`declaration_no_seq`, `versement_ref_seq`) et les politiques RLS.
 
 ## 2. Comptes
 
@@ -54,8 +58,8 @@ sélectionner une affiche à droite **tous les boutons d'action** de cette inter
 séparés en deux blocs :
 
 - **Actions standard** — consulter, créer, modifier…
-- **Actions sensibles** (en rouge) — paiements, suppressions, suppression des
-  paiements d'un conteneur, gestion des permissions.
+- **Actions sensibles** (en rouge) — versements, suppressions, suppression des
+  versements d'un conteneur, gestion des permissions.
 
 Ce que l'employé voit dans sa barre latérale = les interfaces cochées.
 Ce qu'il voit comme boutons = les actions cochées. La même règle est rejouée
@@ -91,13 +95,13 @@ VITE_SUPABASE_ANON_KEY=…
 | Section | Contenu |
 | --- | --- |
 | Tableau de bord | KPI, graphiques, alertes |
-| Clients principaux | Cartes, recherche, filtres, détails 4 onglets, paiements + impression |
+| Clients principaux | Cartes, recherche, filtres, détails 4 onglets, versements + impression |
 | Clients secondaires | Assistant multi-étapes ; à l'étape conteneur, la création d'un conteneur est **à côté de la recherche** |
-| Conteneurs | Contenu, historique des paiements (imprimable), reste par client principal |
+| Conteneurs | Contenu, historique des versements (imprimable), reste par client principal |
 | Suivi de dédouanement | Pipeline 6 statuts |
-| Suivi de paiement | Encaissements par conteneur, historique, **impression d'un reçu ou de tout l'historique** |
-| Caisse | Dépôts / retraits, paiements des conteneurs, impression |
-| Employés | Cartes avec **toutes les actions visibles** : Voir, Modifier, Permissions, Acomptes, Absences, Paiement, Supprimer |
+| Suivi de versement | Versements par conteneur, historique, **impression d'un reçu ou de tout l'historique** |
+| Caisse | Dépôts / retraits, versements des conteneurs, impression |
+| Employés | Cartes avec **toutes les actions visibles** : Voir, Modifier, Permissions, Acomptes, Absences, Versement, Supprimer |
 | Rapports | Analyse par période avec détail cliquable |
 | Paramètres | Entreprise, compte, sauvegarde / restauration / synchronisation |
 
@@ -109,24 +113,30 @@ Tous les documents passent par `src/components/print/PrintDocument.tsx` :
  [logo]
  NOM DE L'ENTREPRISE                     adresse · téléphone · e-mail · NIF · NIS · RC
  ═══════════════════════════════════════════════════════════════════
-                          SUIVI DE PAIEMENT
+                          SUIVI DE VERSEMENT
  ───────────────────────────────────────────────────────────────────
  … contenu …
 ```
 
-Deux formats : **reçu d'un paiement** (bouton imprimante sur chaque ligne
+Deux formats : **reçu d'un versement** (bouton imprimante sur chaque ligne
 d'historique) et **historique complet** (bouton « Imprimer l'historique »).
 
 ## 8. Règles métier
 
-- Un conteneur contient **au maximum 4 véhicules** (contrainte en base).
+- Un conteneur contient **au maximum 5 véhicules** (contrainte en base).
 - Un client secondaire = une personne + un véhicule + un conteneur + un prix.
-- Les paiements sont enregistrés par couple **(conteneur, client principal)**.
+- Chaque client secondaire reçoit un **numéro de déclaration** séquentiel
+  (`0001`, `0002`, …) : c'est son identifiant métier, affiché partout et
+  recherchable depuis « Clients secondaires » et « Suivi de dédouanement ».
+- Chaque versement reçoit une **référence versement** séquentielle (`00001`,
+  `00002`, …), imprimée sur le reçu et sur les historiques. La rechercher dans
+  « Suivi de versement » affiche le conteneur qui la contient.
+- Les versements sont enregistrés par couple **(conteneur, client principal)**.
 - Statuts : `Non arrivé → Arrivé → Saisie → Liquidé → Sortie → Remis au client`.
 - Un nouvel employé est créé **sans aucune permission**.
 - Le calcul de paie liste les **mois (ou jours) non payés**, les **acomptes** et
   **absences non encore déduits**, propose un net **modifiable à la main**, avec
-  **date de paiement modifiable** et **description facultative**.
+  **date de versement modifiable** et **description facultative**.
 
 Tous les calculs financiers passent par `src/lib/selectors.ts` — un seul point de vérité.
 

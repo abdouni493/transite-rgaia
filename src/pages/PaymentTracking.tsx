@@ -27,7 +27,10 @@ import {
   formatDate,
   formatMoney,
   formatMoneyShort,
+  formatDeclarationNo,
   formatNumber,
+  formatVersementRef,
+  matchesRef,
   norm,
   nowTime,
   todayISO,
@@ -132,14 +135,29 @@ export function PaymentTracking() {
 
   const visible = useMemo(() => {
     const q = norm(query);
+    const raw = query.trim();
     return rows
       .filter((r) => (filter === 'all' ? true : r.money.status === filter))
+      /* Typing a versement reference surfaces the container that holds it. */
+      .map((r) => ({
+        ...r,
+        refMatch:
+          (raw &&
+            paymentsOfContainer(state, r.container.id).find((p) =>
+              matchesRef(formatVersementRef(p.refNo), raw),
+            )) ||
+          null,
+      }))
       .filter((r) => {
         if (!q) return true;
-        return norm(r.container.name).includes(q) || norm(r.container.tcNumber).includes(q);
+        return (
+          !!r.refMatch ||
+          norm(r.container.name).includes(q) ||
+          norm(r.container.tcNumber).includes(q)
+        );
       })
       .sort((a, b) => b.money.rest - a.money.rest || a.container.name.localeCompare(b.container.name));
-  }, [rows, query, filter]);
+  }, [rows, query, filter, state]);
 
   /* ---------- actions ---------- */
   const handleDeletePayment = async (p: Payment) => {
@@ -228,7 +246,7 @@ export function PaymentTracking() {
           <SearchBar
             value={query}
             onChange={setQuery}
-            placeholder={t('searchContainerPlaceholder')}
+            placeholder={t('searchPaymentPlaceholder')}
             className="lg:max-w-sm lg:flex-1"
           />
           <FilterPills<Filter>
@@ -283,6 +301,7 @@ export function PaymentTracking() {
                   cars={r.cars}
                   principals={r.principals}
                   payments={r.payments}
+                  refMatch={r.refMatch}
                   onPay={
                     can('paymentTracking', 'addPayment')
                       ? () => setPayTarget({ container: r.container, payment: null })
@@ -321,8 +340,10 @@ export function PaymentTracking() {
             updatePayment(editingId, data);
             toast.success(t('paymentUpdated'));
           } else {
-            addPayment(data);
-            toast.success(t('paymentAdded'));
+            const created = addPayment(data);
+            toast.success(
+              `${t('paymentAdded')} · ${t('versementRef')} ${formatVersementRef(created.refNo)}`,
+            );
           }
           setPayTarget(null);
         }}
@@ -343,6 +364,7 @@ function ContainerCard({
   cars,
   principals,
   payments,
+  refMatch,
   onPay,
   onHistory,
   onPrint,
@@ -352,6 +374,8 @@ function ContainerCard({
   cars: number;
   principals: number;
   payments: number;
+  /** The versement the current search matched, when the query was a reference. */
+  refMatch?: Payment | null;
   onPay?: () => void;
   onHistory?: () => void;
   onPrint?: () => void;
@@ -376,8 +400,21 @@ function ContainerCard({
 
       {/* body */}
       <div className="flex-1 p-4">
+        {refMatch && (
+          <p className="mb-3 rounded-xl bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700 ring-1 ring-emerald-200">
+            {t('refFound', { ref: formatVersementRef(refMatch.refNo) })} ·{' '}
+            <span className="tabular-nums">
+              {formatDate(refMatch.date, lang)} · {formatMoney(refMatch.amount, lang, t('currency'))}
+            </span>
+          </p>
+        )}
+
         <div className="mb-3 grid grid-cols-3 gap-2">
-          <DataPoint label={t('totalCars')} value={`${cars}/4`} icon={<Car size={11} />} />
+          <DataPoint
+            label={t('totalCars')}
+            value={`${cars}/${MAX_CARS_PER_CONTAINER}`}
+            icon={<Car size={11} />}
+          />
           <DataPoint label={t('principalClients')} value={principals} icon={<Users size={11} />} />
           <DataPoint label={t('payments')} value={payments} icon={<CreditCard size={11} />} />
         </div>
@@ -740,6 +777,7 @@ function HistoryDialog({
           <table className="w-full min-w-[44rem] text-sm">
             <thead>
               <tr className="border-b border-ink-200 bg-ink-50 text-2xs uppercase tracking-wide text-ink-500">
+                <th className="px-4 py-2.5 text-start font-bold">{t('versementRefShort')}</th>
                 <th className="px-4 py-2.5 text-start font-bold">{t('date')}</th>
                 <th className="px-4 py-2.5 text-start font-bold">{t('principalClient')}</th>
                 <th className="px-4 py-2.5 text-start font-bold">{t('description')}</th>
@@ -764,6 +802,9 @@ function HistoryDialog({
                       transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
                       className="transition-colors hover:bg-ink-50/70"
                     >
+                      <td className="whitespace-nowrap px-4 py-2.5 font-mono text-xs font-extrabold tabular-nums text-brand-700">
+                        {formatVersementRef(p.refNo)}
+                      </td>
                       <td className="whitespace-nowrap px-4 py-2.5 text-xs font-semibold tabular-nums text-ink-600">
                         {formatDate(p.date, lang)} · {p.time}
                       </td>
@@ -818,7 +859,7 @@ function HistoryDialog({
             </tbody>
             <tfoot>
               <tr className="border-t-2 border-ink-200 bg-ink-50">
-                <td colSpan={4} className="px-4 py-2.5 text-[13px] font-bold text-ink-700">
+                <td colSpan={5} className="px-4 py-2.5 text-[13px] font-bold text-ink-700">
                   {t('totalPaid')}
                 </td>
                 <td className="px-4 py-2.5 text-end text-sm font-extrabold tabular-nums text-emerald-700">
@@ -898,8 +939,8 @@ function PrintDialog({ container, onClose }: { container: Container | null; onCl
           <table>
             <thead>
               <tr>
-                <th className="text-start" style={{ width: '4%' }}>
-                  #
+                <th className="text-start" style={{ width: '8%' }}>
+                  {t('declarationNo')}
                 </th>
                 <th className="text-start">{t('secondaryClient')}</th>
                 <th className="text-start">{t('car')}</th>
@@ -909,11 +950,13 @@ function PrintDialog({ container, onClose }: { container: Container | null; onCl
               </tr>
             </thead>
             <tbody>
-              {data.cars.map((c, i) => {
+              {data.cars.map((c) => {
                 const pc = state.principalClients.find((p) => p.id === c.principalClientId);
                 return (
                   <tr key={c.id}>
-                    <td className="text-start tabular-nums">{i + 1}</td>
+                    <td className="text-start font-mono tabular-nums">
+                      {formatDeclarationNo(c.declarationNo)}
+                    </td>
                     <td className="text-start font-bold">{fullName(c)}</td>
                     <td className="text-start">
                       {c.car.brand} {c.car.name}
@@ -990,8 +1033,8 @@ function PrintDialog({ container, onClose }: { container: Container | null; onCl
           <table>
             <thead>
               <tr>
-                <th className="text-start" style={{ width: '4%' }}>
-                  #
+                <th className="text-start" style={{ width: '8%' }}>
+                  {t('versementRefShort')}
                 </th>
                 <th className="text-start">{t('date')}</th>
                 <th className="text-start">{t('principalClient')}</th>
@@ -1001,11 +1044,13 @@ function PrintDialog({ container, onClose }: { container: Container | null; onCl
               </tr>
             </thead>
             <tbody>
-              {data.payments.map((p, i) => {
+              {data.payments.map((p) => {
                 const pc = state.principalClients.find((c) => c.id === p.principalClientId);
                 return (
                   <tr key={p.id}>
-                    <td className="text-start tabular-nums">{i + 1}</td>
+                    <td className="text-start font-mono tabular-nums">
+                      {formatVersementRef(p.refNo)}
+                    </td>
                     <td className="text-start tabular-nums">
                       {formatDate(p.date, lang)} · {p.time}
                     </td>

@@ -28,7 +28,15 @@ import {
   secondariesOfPrincipal,
   carMoney,
 } from '../lib/selectors';
-import { formatDate, formatMoney, formatMoneyShort, norm, todayISO, nowTime } from '../lib/format';
+import {
+  formatDate,
+  formatMoney,
+  formatMoneyShort,
+  formatVersementRef,
+  norm,
+  todayISO,
+  nowTime,
+} from '../lib/format';
 import type { ClientStatus, Payment, PrincipalClient } from '../lib/types';
 import {
   Avatar,
@@ -301,9 +309,11 @@ export function PrincipalClients() {
         client={payFor}
         onClose={() => setPayFor(null)}
         onSave={(p) => {
-          addPayment(p);
+          const created = addPayment(p);
           setPayFor(null);
-          toast.success(t('paymentAdded'));
+          toast.success(
+            `${t('paymentAdded')} · ${t('versementRef')} ${formatVersementRef(created.refNo)}`,
+          );
         }}
       />
     </div>
@@ -747,6 +757,7 @@ function ClientDetail({
                   <table className="w-full min-w-[38rem] text-sm">
                     <thead>
                       <tr className="border-b border-ink-200 bg-ink-50 text-2xs uppercase tracking-wide text-ink-500">
+                        <th className="px-4 py-2.5 text-start font-bold">{t('versementRefShort')}</th>
                         <th className="px-4 py-2.5 text-start font-bold">{t('date')}</th>
                         <th className="px-4 py-2.5 text-start font-bold">{t('container')}</th>
                         <th className="px-4 py-2.5 text-start font-bold">{t('description')}</th>
@@ -758,6 +769,9 @@ function ClientDetail({
                     <tbody className="divide-y divide-ink-100">
                       {data.payments.map((p) => (
                         <tr key={p.id} className="transition-colors hover:bg-ink-50/70">
+                          <td className="whitespace-nowrap px-4 py-2.5 font-mono text-xs font-extrabold tabular-nums text-brand-700">
+                            {formatVersementRef(p.refNo)}
+                          </td>
                           <td className="whitespace-nowrap px-4 py-2.5 text-xs font-semibold tabular-nums text-ink-600">
                             {formatDate(p.date, lang)} · {p.time}
                           </td>
@@ -785,7 +799,7 @@ function ClientDetail({
                     </tbody>
                     <tfoot>
                       <tr className="border-t-2 border-ink-200 bg-ink-50">
-                        <td colSpan={4} className="px-4 py-2.5 text-[13px] font-bold text-ink-700">
+                        <td colSpan={5} className="px-4 py-2.5 text-[13px] font-bold text-ink-700">
                           {t('totalPaid')}
                         </td>
                         <td className="px-4 py-2.5 text-end text-sm font-extrabold tabular-nums text-emerald-700">

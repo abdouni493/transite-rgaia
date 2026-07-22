@@ -37,6 +37,7 @@ import {
   workerRow,
 } from '../lib/db';
 import { writeBrand } from '../lib/brand';
+import { nextDeclarationNo, nextVersementRef } from '../lib/selectors';
 import { todayISO } from '../lib/format';
 import { useToast } from '../components/ui/overlays';
 import { PAGE_KEYS } from '../lib/types';
@@ -98,7 +99,9 @@ interface StoreValue {
   deletePrincipal: (id: ID) => void;
 
   /* secondary clients */
-  addSecondary: (c: Omit<SecondaryClient, 'id' | 'createdAt' | 'customsStatus'>) => SecondaryClient;
+  addSecondary: (
+    c: Omit<SecondaryClient, 'id' | 'createdAt' | 'customsStatus' | 'declarationNo'>,
+  ) => SecondaryClient;
   updateSecondary: (id: ID, patch: Partial<SecondaryClient>) => void;
   deleteSecondary: (id: ID) => void;
 
@@ -108,7 +111,7 @@ interface StoreValue {
   deleteContainer: (id: ID) => void;
 
   /* payments */
-  addPayment: (p: Omit<Payment, 'id' | 'createdAt' | 'createdBy'>) => Payment;
+  addPayment: (p: Omit<Payment, 'id' | 'createdAt' | 'createdBy' | 'refNo'>) => Payment;
   updatePayment: (id: ID, patch: Partial<Payment>) => void;
   deletePayment: (id: ID) => void;
 
@@ -418,20 +421,24 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
 
   /* ---------------- secondary clients ---------------- */
 
-  const addSecondary = useCallback<StoreValue['addSecondary']>((c) => {
-    const item: SecondaryClient = {
-      ...c,
-      id: newId(),
-      customsStatus: 'non_arrive',
-      createdAt: todayISO(),
-    };
-    setState((s) => ({ ...s, secondaryClients: [item, ...s.secondaryClients] }));
-    void run(
-      'secondary_clients',
-      supabase.from('secondary_clients').insert({ id: item.id, ...secondaryRow(item) }),
-    );
-    return item;
-  }, []);
+  const addSecondary = useCallback<StoreValue['addSecondary']>(
+    (c) => {
+      const item: SecondaryClient = {
+        ...c,
+        id: newId(),
+        declarationNo: nextDeclarationNo(state),
+        customsStatus: 'non_arrive',
+        createdAt: todayISO(),
+      };
+      setState((s) => ({ ...s, secondaryClients: [item, ...s.secondaryClients] }));
+      void run(
+        'secondary_clients',
+        supabase.from('secondary_clients').insert({ id: item.id, ...secondaryRow(item) }),
+      );
+      return item;
+    },
+    [state],
+  );
 
   const updateSecondary = useCallback<StoreValue['updateSecondary']>((id, patch) => {
     setState((s) => ({
@@ -483,6 +490,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       const item: Payment = {
         ...p,
         id: newId(),
+        refNo: nextVersementRef(state),
         createdBy: actor,
         createdAt: `${p.date}T${p.time}`,
       };
@@ -490,7 +498,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       void run('payments', supabase.from('payments').insert({ id: item.id, ...paymentRow(item) }));
       return item;
     },
-    [actor],
+    [actor, state],
   );
 
   const updatePayment = useCallback<StoreValue['updatePayment']>((id, patch) => {

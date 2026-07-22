@@ -21,6 +21,7 @@ import {
   formatDate,
   formatMoney,
   formatMoneyShort,
+  formatVersementRef,
   inRange,
   nowTime,
   todayISO,
@@ -505,6 +506,7 @@ function ContainerPaymentsTable({ rows: payments }: { rows: Payment[] }) {
       <table className="w-full min-w-[52rem] text-sm">
         <thead>
           <tr className="border-b border-ink-200/70 bg-ink-50/60 text-2xs uppercase tracking-wide text-ink-500">
+            <th className="px-5 py-2.5 text-start font-bold">{t('versementRefShort')}</th>
             <th className="px-5 py-2.5 text-start font-bold">{t('date')}</th>
             <th className="px-5 py-2.5 text-start font-bold">{t('container')}</th>
             <th className="px-5 py-2.5 text-start font-bold">{t('principalClient')}</th>
@@ -529,6 +531,9 @@ function ContainerPaymentsTable({ rows: payments }: { rows: Payment[] }) {
                   transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
                   className="transition-colors hover:bg-ink-50/70"
                 >
+                  <td className="whitespace-nowrap px-5 py-2.5 font-mono text-xs font-extrabold tabular-nums text-brand-700">
+                    {formatVersementRef(p.refNo)}
+                  </td>
                   <td className="whitespace-nowrap px-5 py-2.5 text-xs font-semibold tabular-nums text-ink-600">
                     {formatDate(p.date, lang)} · {p.time}
                   </td>
@@ -573,7 +578,7 @@ function ContainerPaymentsTable({ rows: payments }: { rows: Payment[] }) {
         </tbody>
         <tfoot>
           <tr className="border-t-2 border-ink-200 bg-ink-50">
-            <td colSpan={5} className="px-5 py-2.5 text-[13px] font-bold text-ink-700">
+            <td colSpan={6} className="px-5 py-2.5 text-[13px] font-bold text-ink-700">
               {t('totalPaid')}
             </td>
             <td className="px-5 py-2.5 text-end text-sm font-extrabold tabular-nums text-emerald-700">

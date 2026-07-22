@@ -95,6 +95,7 @@ const toContainer = (r: Row): Container => ({
 
 const toSecondary = (r: Row): SecondaryClient => ({
   id: str(r.id),
+  declarationNo: num(r.declaration_no),
   firstName: str(r.first_name),
   lastName: str(r.last_name),
   address: str(r.address),
@@ -113,6 +114,7 @@ const toSecondary = (r: Row): SecondaryClient => ({
 
 const toPayment = (r: Row): Payment => ({
   id: str(r.id),
+  refNo: num(r.ref_no),
   containerId: str(r.container_id),
   principalClientId: str(r.principal_client_id),
   amount: num(r.amount),
@@ -243,6 +245,7 @@ export const containerRow = (c: Partial<Container>) => ({
 });
 
 export const secondaryRow = (c: Partial<SecondaryClient>) => ({
+  ...(c.declarationNo !== undefined && { declaration_no: c.declarationNo }),
   ...(c.firstName !== undefined && { first_name: c.firstName }),
   ...(c.lastName !== undefined && { last_name: c.lastName }),
   ...(c.address !== undefined && { address: c.address }),
@@ -259,6 +262,7 @@ export const secondaryRow = (c: Partial<SecondaryClient>) => ({
 });
 
 export const paymentRow = (p: Partial<Payment>) => ({
+  ...(p.refNo !== undefined && { ref_no: p.refNo }),
   ...(p.containerId !== undefined && { container_id: p.containerId }),
   ...(p.principalClientId !== undefined && { principal_client_id: p.principalClientId }),
   ...(p.amount !== undefined && { amount: p.amount }),

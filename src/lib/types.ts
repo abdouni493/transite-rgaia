@@ -48,6 +48,8 @@ export interface Car {
 
 export interface SecondaryClient {
   id: ID;
+  /** Sequential "numéro de déclaration" — the business-facing id, shown as 0001. */
+  declarationNo: number;
   firstName: string;
   lastName: string;
   address: string;
@@ -69,12 +71,14 @@ export interface Container {
   notes?: string;
 }
 
-export const MAX_CARS_PER_CONTAINER = 4;
+export const MAX_CARS_PER_CONTAINER = 5;
 
 /* ---------- Money ---------- */
 
 export interface Payment {
   id: ID;
+  /** Sequential "référence versement" — shown as 00001. */
+  refNo: number;
   containerId: ID;
   principalClientId: ID;
   amount: number;

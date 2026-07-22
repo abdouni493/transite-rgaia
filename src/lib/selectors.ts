@@ -33,6 +33,24 @@ export function money(total: number, paid: number): Money {
 
 const sum = <T>(arr: T[], f: (x: T) => number) => arr.reduce((a, x) => a + f(x), 0);
 
+/* ---------------- Sequential business numbers ---------------- */
+
+/**
+ * Both the declaration number and the versement reference are handed out from
+ * the local mirror: max + 1, starting at 1. The database carries the same
+ * sequence as a fallback default and rejects duplicates, so a collision
+ * surfaces as a toast + resync rather than two rows sharing a number.
+ */
+const nextSeq = (nums: number[]) => nums.reduce((m, n) => Math.max(m, n || 0), 0) + 1;
+
+export function nextDeclarationNo(s: AppState): number {
+  return nextSeq(s.secondaryClients.map((c) => c.declarationNo));
+}
+
+export function nextVersementRef(s: AppState): number {
+  return nextSeq(s.payments.map((p) => p.refNo));
+}
+
 /* ---------------- Container ---------------- */
 
 export function carsOfContainer(s: AppState, containerId: ID): SecondaryClient[] {

@@ -8,7 +8,7 @@
       [logo]
       ENTREPRISE                          coordonnées / NIF / RC
      ═════════════════════════════════════════════════════════
-                       SUIVI DE PAIEMENT
+                       SUIVI DE VERSEMENT
      ─────────────────────────────────────────────────────────
    ============================================================ */
 
@@ -117,7 +117,7 @@ export function PrintDocument({
   reference,
   children,
 }: {
-  /** Big centred banner under the rule, e.g. "Suivi de paiement". */
+  /** Big centred banner under the rule, e.g. "Suivi de versement". */
   title: string;
   /** Small line under the banner — container name, client, period… */
   reference?: string;

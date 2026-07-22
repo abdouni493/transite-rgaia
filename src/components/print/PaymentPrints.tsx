@@ -11,7 +11,7 @@ import { useMemo } from 'react';
 import { useI18n } from '../../i18n/I18nProvider';
 import { useStore } from '../../store/AppStore';
 import { containerMoney, fullName, principalMoney } from '../../lib/selectors';
-import { formatDate, formatMoney } from '../../lib/format';
+import { formatDate, formatMoney, formatVersementRef } from '../../lib/format';
 import type { Payment } from '../../lib/types';
 import {
   InfoCell,
@@ -46,22 +46,25 @@ export function PaymentReceiptDialog({
 
   if (!payment || !data) return null;
 
-  const ref = payment.id.slice(-8).toUpperCase();
+  /* The versement reference is the document's identity — same number the
+     search box in "Suivi de versement" answers to. */
+  const ref = formatVersementRef(payment.refNo);
 
   return (
     <PrintPreview
       open={!!payment}
       onClose={onClose}
       heading={t('paymentReceiptSingle')}
-      subheading={`${formatDate(payment.date, lang)} · ${fm(payment.amount)}`}
+      subheading={`${t('versementRef')} ${ref} · ${formatDate(payment.date, lang)} · ${fm(payment.amount)}`}
     >
       <PrintDocument
         title={t('paymentReceiptSingle')}
-        reference={`${t('receiptNo')} ${ref}`}
+        reference={`${t('versementRef')} ${ref}`}
       >
         {/* who / what / when */}
         <PrintSection>
           <div className="tp-box grid grid-cols-2 gap-x-4 gap-y-2.5 rounded p-3 sm:grid-cols-4">
+            <InfoCell label={t('versementRef')} value={ref} mono />
             <InfoCell label={t('date')} value={`${formatDate(payment.date, lang)} · ${payment.time}`} />
             <InfoCell
               label={t('principalClient')}
@@ -71,7 +74,6 @@ export function PaymentReceiptDialog({
             <InfoCell label={t('tcNumber')} value={data.container?.tcNumber ?? '—'} mono />
             <InfoCell label={t('phone')} value={data.client?.phone ?? '—'} />
             <InfoCell label={t('recordedBy')} value={payment.createdBy} />
-            <InfoCell label={t('documentRef')} value={ref} mono />
             <InfoCell label={t('description')} value={payment.description || '—'} />
           </div>
         </PrintSection>
@@ -169,8 +171,8 @@ export function PaymentsPrintDialog({
           <table>
             <thead>
               <tr>
-                <th className="text-start" style={{ width: '5%' }}>
-                  #
+                <th className="text-start" style={{ width: '9%' }}>
+                  {t('versementRefShort')}
                 </th>
                 <th className="text-start">{t('date')}</th>
                 <th className="text-start">
@@ -182,7 +184,7 @@ export function PaymentsPrintDialog({
               </tr>
             </thead>
             <tbody>
-              {scope.payments.map((p, i) => {
+              {scope.payments.map((p) => {
                 const other =
                   scope.counterparty === 'client'
                     ? (() => {
@@ -192,7 +194,9 @@ export function PaymentsPrintDialog({
                     : (state.containers.find((x) => x.id === p.containerId)?.name ?? '—');
                 return (
                   <tr key={p.id}>
-                    <td className="text-start tabular-nums">{i + 1}</td>
+                    <td className="text-start font-mono tabular-nums">
+                      {formatVersementRef(p.refNo)}
+                    </td>
                     <td className="text-start tabular-nums">
                       {formatDate(p.date, lang)} · {p.time}
                     </td>
