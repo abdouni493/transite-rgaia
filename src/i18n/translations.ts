@@ -240,6 +240,9 @@ export const fr = {
   searchSecondaryPlaceholder: 'Rechercher par n° de déclaration, nom ou adresse…',
   declarationNo: 'N° de déclaration',
   declarationNoHint: 'Numéro attribué automatiquement à la création',
+  declarationNoManualHint:
+    'Pré-rempli avec le prochain numéro libre — modifiable si votre dossier porte un autre numéro.',
+  declarationNoTaken: 'Ce numéro de déclaration est déjà utilisé',
   step: 'Étape',
   stepIdentity: 'Identité',
   stepPrincipal: 'Client principal',
@@ -360,6 +363,12 @@ export const fr = {
   /* -- invoices -- */
   invoice: 'Facture',
   newInvoice: 'Nouvelle facture',
+  editInvoice: 'Modifier la facture',
+  invoiceUpdated: 'Facture {no} modifiée',
+  orphanServices: 'Services retirés du catalogue',
+  orphanServicesHint:
+    'Ces lignes proviennent de la facture d\'origine. Le service n\'existe plus au catalogue : la ligne est conservée telle quelle.',
+  removeLine: 'Retirer la ligne',
   invoicesSubtitle: 'Factures des clients secondaires',
   invoiceNo: 'N° de facture',
   invoiceNoShort: 'N° facture',
@@ -929,6 +938,8 @@ export const ar: Record<TranslationKey, string> = {
   searchSecondaryPlaceholder: 'ابحث برقم التصريح أو الاسم أو العنوان…',
   declarationNo: 'رقم التصريح',
   declarationNoHint: 'رقم يُمنح تلقائياً عند الإنشاء',
+  declarationNoManualHint: 'مملوء مسبقاً بأول رقم متاح — يمكن تعديله إذا كان ملفك يحمل رقماً آخر.',
+  declarationNoTaken: 'رقم التصريح هذا مستعمل بالفعل',
   step: 'الخطوة',
   stepIdentity: 'الهوية',
   stepPrincipal: 'العميل الرئيسي',
@@ -1042,6 +1053,12 @@ export const ar: Record<TranslationKey, string> = {
 
   invoice: 'فاتورة',
   newInvoice: 'فاتورة جديدة',
+  editInvoice: 'تعديل الفاتورة',
+  invoiceUpdated: 'تم تعديل الفاتورة {no}',
+  orphanServices: 'خدمات أُزيلت من الدليل',
+  orphanServicesHint:
+    'هذه البنود من الفاتورة الأصلية. لم تعد الخدمة موجودة في الدليل، لذلك يُحتفظ بالبند كما هو.',
+  removeLine: 'إزالة البند',
   invoicesSubtitle: 'فواتير العملاء الثانويين',
   invoiceNo: 'رقم الفاتورة',
   invoiceNoShort: 'رقم الفاتورة',

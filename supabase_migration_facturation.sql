@@ -8,6 +8,9 @@
 --   5. Services — the billable catalog (amount HT + TVA %).
 --   6. Invoices — sequential number 0001, lines snapshotted as jsonb.
 --
+-- Re-run it after pulling: it also grants the "invoices.edit" action that
+-- the Modifier button on the Facturation screen checks for.
+--
 -- Every step is guarded, so the file is safe to re-run.
 -- ============================================================
 
@@ -168,8 +171,9 @@ insert into public.app_actions (page_key, key, label_fr, label_ar, sensitive, so
 
   ('invoices', 'create', 'Créer une facture',  'إنشاء فاتورة', false, 1),
   ('invoices', 'view',   'Consulter',          'عرض',          false, 2),
-  ('invoices', 'delete', 'Supprimer',          'حذف',          true,  3),
-  ('invoices', 'print',  'Imprimer',           'طباعة',        false, 4),
+  ('invoices', 'edit',   'Modifier',           'تعديل',        false, 3),
+  ('invoices', 'delete', 'Supprimer',          'حذف',          true,  4),
+  ('invoices', 'print',  'Imprimer',           'طباعة',        false, 5),
 
   ('secondaryClients', 'createWarehouseInline', 'Créer un entrepôt en ligne', 'إنشاء مستودع مباشرة', false, 6),
   ('secondaryClients', 'createCarInline',       'Créer marque / modèle',      'إنشاء علامة أو طراز',  false, 7)
@@ -274,10 +278,12 @@ create policy invoices_read on public.invoices
   );
 create policy invoices_insert on public.invoices
   for insert to authenticated with check (public.has_action('invoices', 'create'));
+-- Editing an issued invoice is its own grant: creating one and revising one
+-- afterwards are different responsibilities in an accounts office.
 create policy invoices_update on public.invoices
   for update to authenticated
-  using (public.has_action('invoices', 'create'))
-  with check (public.has_action('invoices', 'create'));
+  using (public.has_action('invoices', 'edit'))
+  with check (public.has_action('invoices', 'edit'));
 create policy invoices_delete on public.invoices
   for delete to authenticated using (public.has_action('invoices', 'delete'));
 
@@ -367,11 +373,13 @@ with checks (ord, item, ok) as (
   union all select 30, 'catalogue app_pages (3 nouvelles)',
     (select count(*) from public.app_pages
       where key in ('warehouses', 'services', 'invoices')) = 3
-  union all select 31, 'catalogue app_actions (14 nouvelles)',
+  union all select 31, 'catalogue app_actions (15 nouvelles)',
     (select count(*) from public.app_actions
       where page_key in ('warehouses', 'services', 'invoices')
          or (page_key = 'secondaryClients'
-             and key in ('createWarehouseInline', 'createCarInline'))) >= 14
+             and key in ('createWarehouseInline', 'createCarInline'))) >= 15
+  union all select 32, 'action   invoices.edit', exists (
+    select 1 from public.app_actions where page_key = 'invoices' and key = 'edit')
 
   -- realtime
   union all select 40, 'realtime (5 tables)',

@@ -110,7 +110,10 @@ interface StoreValue {
 
   /* secondary clients */
   addSecondary: (
-    c: Omit<SecondaryClient, 'id' | 'createdAt' | 'customsStatus' | 'declarationNo'>,
+    c: Omit<SecondaryClient, 'id' | 'createdAt' | 'customsStatus' | 'declarationNo'> & {
+      /** Typed by hand on the form; falls back to the next free number. */
+      declarationNo?: number;
+    },
   ) => SecondaryClient;
   updateSecondary: (id: ID, patch: Partial<SecondaryClient>) => void;
   deleteSecondary: (id: ID) => void;
@@ -136,6 +139,7 @@ interface StoreValue {
 
   /* invoices */
   addInvoice: (i: Omit<Invoice, 'id' | 'createdAt' | 'createdBy' | 'invoiceNo'>) => Invoice;
+  updateInvoice: (id: ID, patch: Partial<Invoice>) => void;
   deleteInvoice: (id: ID) => void;
 
   /* payments */
@@ -460,7 +464,9 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       const item: SecondaryClient = {
         ...c,
         id: newId(),
-        declarationNo: nextDeclarationNo(state),
+        // A unique index backs this up, so a number typed twice is refused by
+        // Postgres and surfaces as a toast rather than two files sharing an id.
+        declarationNo: c.declarationNo ?? nextDeclarationNo(state),
         customsStatus: 'non_arrive',
         createdAt: todayISO(),
       };
@@ -618,6 +624,14 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     },
     [actor, state],
   );
+
+  const updateInvoice = useCallback<StoreValue['updateInvoice']>((id, patch) => {
+    setState((s) => ({
+      ...s,
+      invoices: s.invoices.map((i) => (i.id === id ? { ...i, ...patch } : i)),
+    }));
+    void run('invoices', supabase.from('invoices').update(invoiceRow(patch)).eq('id', id));
+  }, []);
 
   const deleteInvoice = useCallback<StoreValue['deleteInvoice']>((id) => {
     setState((s) => ({ ...s, invoices: s.invoices.filter((i) => i.id !== id) }));
@@ -1016,6 +1030,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       updateService,
       deleteService,
       addInvoice,
+      updateInvoice,
       deleteInvoice,
       addPayment,
       updatePayment,
@@ -1046,7 +1061,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       visiblePages, addPrincipal, updatePrincipal, deletePrincipal, addSecondary, updateSecondary,
       deleteSecondary, addContainer, updateContainer, deleteContainer, addWarehouse, updateWarehouse,
       deleteWarehouse, addCarBrand, addCarModel, addService, updateService, deleteService, addInvoice,
-      deleteInvoice, addPayment, updatePayment,
+      updateInvoice, deleteInvoice, addPayment, updatePayment,
       deletePayment, addCash, updateCash, deleteCash, addWorker, updateWorker, deleteWorker,
       setWorkerPermissions, addRole, deleteRole, addAdvance, updateAdvance, deleteAdvance,
       addAbsence, updateAbsence, deleteAbsence, addPayroll, deletePayroll, updateCompany,

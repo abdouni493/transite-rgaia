@@ -358,6 +358,7 @@ export const PAGE_ACTIONS: PageDef[] = [
     actions: [
       { key: 'create' },
       { key: 'view' },
+      { key: 'edit' },
       { key: 'delete', sensitive: true },
       { key: 'print' },
     ],

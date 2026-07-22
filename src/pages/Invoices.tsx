@@ -18,6 +18,7 @@ import {
   Eye,
   Hash,
   Minus,
+  Pencil,
   Percent,
   Plus,
   Printer,
@@ -75,8 +76,18 @@ export function Invoices() {
 
   const [query, setQuery] = useState('');
   const [formOpen, setFormOpen] = useState(false);
+  const [editing, setEditing] = useState<Invoice | null>(null);
   const [detail, setDetail] = useState<Invoice | null>(null);
   const [printing, setPrinting] = useState<Invoice | null>(null);
+
+  const openCreate = () => {
+    setEditing(null);
+    setFormOpen(true);
+  };
+  const openEdit = (inv: Invoice) => {
+    setEditing(inv);
+    setFormOpen(true);
+  };
 
   const rows = useMemo(
     () =>
@@ -140,20 +151,21 @@ export function Invoices() {
     toast.success(t('invoiceDeleted'));
   };
 
-  /* Creation ends with the one question that always follows an invoice. */
-  const afterCreate = async (created: Invoice) => {
+  /* Saving ends with the one question that always follows an invoice. */
+  const afterSave = async (saved: Invoice, wasEdit: boolean) => {
     setFormOpen(false);
-    toast.success(t('invoiceCreated', { no: formatInvoiceNo(created.invoiceNo) }));
+    const no = formatInvoiceNo(saved.invoiceNo);
+    toast.success(wasEdit ? t('invoiceUpdated', { no }) : t('invoiceCreated', { no }));
     if (!can('invoices', 'print')) return;
     const yes = await confirm({
       title: t('printInvoiceQuestion'),
-      message: t('printInvoiceHint', { no: formatInvoiceNo(created.invoiceNo) }),
+      message: t('printInvoiceHint', { no }),
       confirmLabel: t('printNow'),
       cancelLabel: t('later'),
       tone: 'brand',
       icon: <Printer size={26} />,
     });
-    if (yes) setPrinting(created);
+    if (yes) setPrinting(saved);
   };
 
   return (
@@ -164,7 +176,7 @@ export function Invoices() {
         subtitle={t('invoicesSubtitle')}
         actions={
           can('invoices', 'create') && (
-            <Button icon={<Plus size={17} />} onClick={() => setFormOpen(true)}>
+            <Button icon={<Plus size={17} />} onClick={openCreate}>
               {t('newInvoice')}
             </Button>
           )
@@ -249,6 +261,7 @@ export function Invoices() {
                   client={r.client}
                   totals={r.totals}
                   onView={can('invoices', 'view') ? () => setDetail(r.invoice) : undefined}
+                  onEdit={can('invoices', 'edit') ? () => openEdit(r.invoice) : undefined}
                   onPrint={can('invoices', 'print') ? () => setPrinting(r.invoice) : undefined}
                   onDelete={
                     can('invoices', 'delete')
@@ -262,11 +275,24 @@ export function Invoices() {
         </motion.div>
       )}
 
-      <InvoiceWizard open={formOpen} onClose={() => setFormOpen(false)} onCreated={afterCreate} />
+      <InvoiceWizard
+        open={formOpen}
+        editing={editing}
+        onClose={() => setFormOpen(false)}
+        onSaved={afterSave}
+      />
 
       <InvoiceDetail
         invoice={detail}
         onClose={() => setDetail(null)}
+        onEdit={
+          can('invoices', 'edit')
+            ? (inv) => {
+                setDetail(null);
+                openEdit(inv);
+              }
+            : undefined
+        }
         onPrint={
           can('invoices', 'print')
             ? (inv) => {
@@ -291,6 +317,7 @@ function InvoiceCard({
   client,
   totals,
   onView,
+  onEdit,
   onPrint,
   onDelete,
 }: {
@@ -298,6 +325,7 @@ function InvoiceCard({
   client?: SecondaryClient;
   totals: ReturnType<typeof invoiceTotals>;
   onView?: () => void;
+  onEdit?: () => void;
   onPrint?: () => void;
   onDelete?: () => void;
 }) {
@@ -372,6 +400,11 @@ function InvoiceCard({
           </Button>
         )}
         {!onView && <span className="flex-1" />}
+        {onEdit && (
+          <IconButton label={t('edit')} variant="secondary" onClick={onEdit}>
+            <Pencil size={15} />
+          </IconButton>
+        )}
         {onPrint && (
           <IconButton label={t('print')} variant="secondary" onClick={onPrint}>
             <Printer size={15} />
@@ -442,15 +475,17 @@ const STEPS = ['stepClient', 'stepServices', 'stepReview'] as const;
 
 function InvoiceWizard({
   open,
+  editing,
   onClose,
-  onCreated,
+  onSaved,
 }: {
   open: boolean;
+  editing: Invoice | null;
   onClose: () => void;
-  onCreated: (created: Invoice) => void;
+  onSaved: (saved: Invoice, wasEdit: boolean) => void;
 }) {
   const { t, lang, isRtl } = useI18n();
-  const { state, addInvoice } = useStore();
+  const { state, addInvoice, updateInvoice } = useStore();
   const reduce = useReducedMotion();
 
   const cur = t('currency');
@@ -458,7 +493,7 @@ function InvoiceWizard({
 
   const [step, setStep] = useState(0);
   const [dir, setDir] = useState(1);
-  const [seed, setSeed] = useState(false);
+  const [seed, setSeed] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const [clientId, setClientId] = useState('');
@@ -468,19 +503,35 @@ function InvoiceWizard({
   const [picked, setPicked] = useState<Record<string, number>>({});
   const [date, setDate] = useState(todayISO());
   const [notes, setNotes] = useState('');
+  /**
+   * Snapshotted at creation and carried through an edit untouched — the car's
+   * catalogue price may have moved since, and a reissued invoice must not.
+   * Picking a different client is the one thing that resets it.
+   */
+  const [carPrice, setCarPrice] = useState(0);
 
-  if (open !== seed) {
-    setSeed(open);
-    if (open) {
-      setStep(0);
-      setDir(1);
-      setErrors({});
+  const isEdit = !!editing;
+
+  const target = editing?.id ?? (open ? '__new__' : null);
+  if (target !== seed) {
+    setSeed(target);
+    setStep(0);
+    setDir(1);
+    setErrors({});
+    setClientQuery('');
+    setServiceQuery('');
+    if (editing) {
+      setClientId(editing.secondaryClientId);
+      setPicked(Object.fromEntries(editing.lines.map((l) => [l.serviceId, l.quantity])));
+      setDate(editing.date);
+      setNotes(editing.notes ?? '');
+      setCarPrice(editing.carPrice);
+    } else {
       setClientId('');
-      setClientQuery('');
-      setServiceQuery('');
       setPicked({});
       setDate(todayISO());
       setNotes('');
+      setCarPrice(0);
     }
   }
 
@@ -515,17 +566,29 @@ function InvoiceWizard({
     ? state.principalClients.find((p) => p.id === client.principalClientId)
     : undefined;
 
+  /**
+   * Catalogue entries win, so an edit re-prices at today's rates. A line whose
+   * service has since been deleted keeps its original snapshot instead of
+   * vanishing from the invoice without a word.
+   */
   const lines = useMemo<InvoiceLine[]>(
     () =>
       Object.entries(picked).flatMap(([id, quantity]) => {
         const s = state.services.find((x) => x.id === id);
-        if (!s) return [];
-        return [{ serviceId: s.id, name: s.name, amount: s.amount, tva: s.tva, quantity }];
+        if (s) return [{ serviceId: s.id, name: s.name, amount: s.amount, tva: s.tva, quantity }];
+        const kept = editing?.lines.find((l) => l.serviceId === id);
+        return kept ? [{ ...kept, quantity }] : [];
       }),
-    [picked, state.services],
+    [picked, state.services, editing],
   );
 
-  const totals = invoiceTotals(client?.price ?? 0, lines);
+  /** The kept-but-delisted lines, surfaced so they can be reviewed or removed. */
+  const orphanLines = useMemo(
+    () => lines.filter((l) => !state.services.some((s) => s.id === l.serviceId)),
+    [lines, state.services],
+  );
+
+  const totals = invoiceTotals(carPrice, lines);
 
   const validate = (which: number): Record<string, string> => {
     const e: Record<string, string> = {};
@@ -552,14 +615,21 @@ function InvoiceWizard({
     const e = { ...validate(0), ...validate(1) };
     setErrors(e);
     if (Object.keys(e).length || !client) return;
-    const created = addInvoice({
+
+    const body = {
       secondaryClientId: client.id,
       date,
-      carPrice: client.price,
+      carPrice,
       lines,
       notes: notes.trim() || undefined,
-    });
-    onCreated(created);
+    };
+
+    if (editing) {
+      updateInvoice(editing.id, body);
+      onSaved({ ...editing, ...body }, true);
+      return;
+    }
+    onSaved(addInvoice(body), false);
   };
 
   const toggle = (id: string) =>
@@ -596,6 +666,8 @@ function InvoiceWizard({
                 aria-pressed={on}
                 onClick={() => {
                   setClientId(c.id);
+                  // a different file means a different vehicle: re-snapshot
+                  if (c.id !== clientId) setCarPrice(c.price);
                   setErrors({});
                 }}
                 className={cx(
@@ -728,6 +800,47 @@ function InvoiceWizard({
         )}
       </div>
 
+      {/* Lines billed under a service that has since been deleted. They keep
+          their original price; showing them is the only way to let the user
+          decide whether to keep or drop them. */}
+      {orphanLines.length > 0 && (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50/70 p-3">
+          <p className="text-2xs font-bold uppercase tracking-wide text-amber-700">
+            {t('orphanServices')}
+          </p>
+          <p className="mt-0.5 text-xs text-amber-700/80">{t('orphanServicesHint')}</p>
+          <div className="mt-2 space-y-1.5">
+            {orphanLines.map((l) => (
+              <div
+                key={l.serviceId}
+                className="flex items-center gap-2.5 rounded-xl border border-amber-200 bg-white p-2.5"
+              >
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[13px] font-extrabold text-ink-900">
+                    {l.name}
+                  </span>
+                  <span className="block truncate text-2xs text-ink-500">
+                    {fm(l.amount)} · {t('tva')} {formatPercent(l.tva, lang)} · {t('qtyShort')}{' '}
+                    {l.quantity}
+                  </span>
+                </span>
+                <span className="shrink-0 text-[13px] font-extrabold tabular-nums text-ink-800">
+                  {fm(l.amount * l.quantity * (1 + l.tva / 100))}
+                </span>
+                <IconButton
+                  label={t('removeLine')}
+                  variant="secondary"
+                  className="!h-8 !w-8 !text-rose-600 hover:!bg-rose-50"
+                  onClick={() => toggle(l.serviceId)}
+                >
+                  <Trash2 size={14} />
+                </IconButton>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {errors.services && <p className="text-xs font-medium text-rose-600">{errors.services}</p>}
 
       {lines.length > 0 && (
@@ -753,7 +866,7 @@ function InvoiceWizard({
         />
         <Input
           label={t('invoiceNo')}
-          value={formatInvoiceNo(nextInvoiceNo(state))}
+          value={formatInvoiceNo(editing ? editing.invoiceNo : nextInvoiceNo(state))}
           readOnly
           disabled
           icon={<ReceiptText size={16} />}
@@ -844,7 +957,7 @@ function InvoiceWizard({
       onClose={onClose}
       size="lg"
       icon={<ReceiptText size={20} />}
-      title={t('newInvoice')}
+      title={isEdit ? `${t('editInvoice')} ${formatInvoiceNo(editing.invoiceNo)}` : t('newInvoice')}
       subtitle={t('stepOf', { current: step + 1, total: STEPS.length })}
       footer={
         <div className="flex items-center gap-2.5">
@@ -865,8 +978,12 @@ function InvoiceWizard({
               {t('next')}
             </Button>
           ) : (
-            <Button onClick={submit} icon={<Plus size={16} />} className="flex-1">
-              {t('create')}
+            <Button
+              onClick={submit}
+              icon={isEdit ? <Check size={16} /> : <Plus size={16} />}
+              className="flex-1"
+            >
+              {isEdit ? t('saveChanges') : t('create')}
             </Button>
           )}
         </div>
@@ -942,10 +1059,12 @@ function InvoiceWizard({
 function InvoiceDetail({
   invoice,
   onClose,
+  onEdit,
   onPrint,
 }: {
   invoice: Invoice | null;
   onClose: () => void;
+  onEdit?: (inv: Invoice) => void;
   onPrint?: (inv: Invoice) => void;
 }) {
   const { t, lang } = useI18n();
@@ -983,6 +1102,16 @@ function InvoiceDetail({
             {t('by')} {invoice.createdBy || '—'}
           </span>
           <div className="flex gap-2">
+            {onEdit && (
+              <Button
+                size="sm"
+                variant="secondary"
+                icon={<Pencil size={15} />}
+                onClick={() => onEdit(invoice)}
+              >
+                {t('edit')}
+              </Button>
+            )}
             {onPrint && (
               <Button
                 size="sm"

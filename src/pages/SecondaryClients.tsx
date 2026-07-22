@@ -89,6 +89,8 @@ import {
 type Filter = 'all' | CustomsStatus;
 
 interface WizardForm {
+  /** Typed by hand, pre-filled with the next free number. */
+  declarationNo: string;
   firstName: string;
   lastName: string;
   address: string;
@@ -104,6 +106,7 @@ interface WizardForm {
 }
 
 const EMPTY_FORM: WizardForm = {
+  declarationNo: '',
   firstName: '',
   lastName: '',
   address: '',
@@ -837,6 +840,7 @@ function SecondaryDialog({
     setForm(
       editing
         ? {
+            declarationNo: String(editing.declarationNo),
             firstName: editing.firstName,
             lastName: editing.lastName,
             address: editing.address,
@@ -850,7 +854,9 @@ function SecondaryDialog({
             warehouseId: editing.warehouseId ?? '',
             price: String(editing.price),
           }
-        : EMPTY_FORM,
+        : // pre-filled with the next free number: leave it alone and the
+          // behaviour is exactly what it was before the field existed
+          { ...EMPTY_FORM, declarationNo: String(nextDeclarationNo(state)) },
     );
   }
 
@@ -892,6 +898,12 @@ function SecondaryDialog({
     [state, form.carBrandId],
   );
   const numericPrice = Number(form.price.replace(/\s/g, ''));
+  const numericDeclaration = Number(form.declarationNo.replace(/\s/g, ''));
+
+  /** The unique index in Postgres is the real guard; this catches it earlier. */
+  const declarationTaken = state.secondaryClients.some(
+    (c) => c.id !== editing?.id && c.declarationNo === numericDeclaration,
+  );
 
   /** A container is blocked when full — unless the car being edited already sits in it. */
   const isBlocked = (id: string) => {
@@ -904,6 +916,13 @@ function SecondaryDialog({
   const validate = (which: number): Record<string, string> => {
     const e: Record<string, string> = {};
     if (which === 0) {
+      if (
+        !form.declarationNo.trim() ||
+        !Number.isInteger(numericDeclaration) ||
+        numericDeclaration < 1
+      )
+        e.declarationNo = t('invalidNumber');
+      else if (declarationTaken) e.declarationNo = t('declarationNoTaken');
       if (!form.firstName.trim()) e.firstName = t('requiredField');
       if (!form.lastName.trim()) e.lastName = t('requiredField');
       if (!form.address.trim()) e.address = t('requiredField');
@@ -950,6 +969,7 @@ function SecondaryDialog({
   /* Catalog ids become plain names on the row: a car keeps the wording it was
      filed under even if the catalog entry is renamed later. */
   const payload = () => ({
+    declarationNo: numericDeclaration,
     firstName: form.firstName.trim(),
     lastName: form.lastName.trim(),
     address: form.address.trim(),
@@ -966,6 +986,15 @@ function SecondaryDialog({
   });
 
   const submitCreate = () => {
+    // The number may have been taken by someone else while this wizard was
+    // open — send the user back to the field rather than failing at the API.
+    const first = validate(0);
+    if (first.declarationNo) {
+      setErrors(first);
+      setDir(-1);
+      setStep(0);
+      return;
+    }
     const e = validate(5);
     setErrors(e);
     if (Object.keys(e).length) return;
@@ -1034,6 +1063,21 @@ function SecondaryDialog({
   /* ---------- shared field groups ---------- */
   const identityFields = (
     <div className="space-y-4">
+      <Input
+        label={t('declarationNo')}
+        type="number"
+        inputMode="numeric"
+        min={1}
+        step={1}
+        dir="ltr"
+        value={form.declarationNo}
+        onChange={(ev) => setForm({ ...form, declarationNo: ev.target.value })}
+        error={errors.declarationNo}
+        hint={t('declarationNoManualHint')}
+        icon={<Hash size={16} />}
+        className="font-mono"
+        required
+      />
       <div className="grid gap-4 sm:grid-cols-2">
         <Input
           label={t('firstName')}
@@ -1533,7 +1577,11 @@ function SecondaryDialog({
     <div className="grid gap-2.5 sm:grid-cols-2">
       <DataPoint
         label={t('declarationNo')}
-        value={formatDeclarationNo(editing ? editing.declarationNo : nextDeclarationNo(state))}
+        value={
+          Number.isFinite(numericDeclaration) && numericDeclaration > 0
+            ? formatDeclarationNo(numericDeclaration)
+            : '—'
+        }
         icon={<Hash size={11} />}
         mono
         className="sm:col-span-2"

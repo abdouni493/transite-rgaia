@@ -114,7 +114,7 @@ VITE_SUPABASE_ANON_KEY=…
 | Suivi de dédouanement | Pipeline 6 statuts |
 | Suivi de versement | Versements par conteneur, historique, **impression d'un reçu ou de tout l'historique** |
 | Services | Catalogue facturable : montant HT + taux de TVA, TTC calculé en direct |
-| Facturation | Assistant 3 étapes (client → services → récapitulatif), **facture imprimable** |
+| Facturation | Assistant 3 étapes (client → services → récapitulatif), **création et modification**, facture imprimable |
 | Caisse | Dépôts / retraits, versements des conteneurs, impression |
 | Employés | Cartes avec **toutes les actions visibles** : Voir, Modifier, Permissions, Acomptes, Absences, Versement, Supprimer |
 | Rapports | Analyse par période avec détail cliquable |
@@ -151,15 +151,25 @@ signature + cachet.
 
 - Un conteneur contient **au maximum 5 véhicules** (contrainte en base).
 - Un client secondaire = une personne + un véhicule + un conteneur + un prix.
-- Chaque client secondaire reçoit un **numéro de déclaration** séquentiel
-  (`0001`, `0002`, …) : c'est son identifiant métier, affiché partout et
-  recherchable depuis « Clients secondaires » et « Suivi de dédouanement ».
+- Chaque client secondaire porte un **numéro de déclaration** (`0001`, `0002`,
+  …) : c'est son identifiant métier, affiché partout et recherchable depuis
+  « Clients secondaires », « Suivi de dédouanement » et « Facturation ». Le
+  champ est **pré-rempli avec le prochain numéro libre et modifiable à la
+  main** — un dossier qui porte déjà un numéro garde le sien. Un index unique
+  en base refuse les doublons ; le formulaire les signale avant l'envoi.
 - Chaque versement reçoit une **référence versement** séquentielle (`00001`,
   `00002`, …), imprimée sur le reçu et sur les historiques. La rechercher dans
   « Suivi de versement » affiche le conteneur qui la contient.
-- Chaque facture reçoit un **numéro de facture** séquentiel (`0001`, `0002`, …).
-  Ses lignes sont **figées à la création** — renommer ou supprimer un service
-  ne réécrit jamais une facture déjà émise.
+- Chaque facture reçoit un **numéro de facture** séquentiel (`0001`, `0002`, …),
+  qui ne change jamais, pas même à la modification. Ses lignes sont **figées à
+  l'émission** — renommer ou supprimer un service ne réécrit jamais une facture
+  déjà émise.
+- **Modifier** une facture (action `invoices.edit`) la repositionne sur les
+  tarifs actuels du catalogue. Une ligne dont le service a depuis été supprimé
+  est **conservée telle quelle** et signalée en jaune dans l'assistant : à
+  l'utilisateur de la garder ou de la retirer, jamais au programme de la faire
+  disparaître en silence. Le prix du véhicule reste celui de l'émission, sauf
+  si l'on change de client secondaire.
 - Une facture additionne le **prix du véhicule** (sans TVA) et les **services
   sélectionnés** (HT + TVA de chacun).
 - Les marques et modèles viennent d'un **catalogue partagé** : ce qui est saisi
