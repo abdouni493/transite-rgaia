@@ -43,7 +43,7 @@ import {
   norm,
   todayISO,
 } from '../lib/format';
-import type { Invoice, InvoiceLine, SecondaryClient } from '../lib/types';
+import type { Invoice, InvoiceLine, SecondaryClient, Service } from '../lib/types';
 import {
   Avatar,
   Button,
@@ -59,6 +59,7 @@ import {
 } from '../components/ui/primitives';
 import { Modal, useConfirm, useToast } from '../components/ui/overlays';
 import { InvoicePrintDialog } from '../components/print/InvoicePrint';
+import { ServiceForm } from '../components/ServiceForm';
 import { DataPoint, PageHeader, ResultCount, StatCard } from '../components/shared';
 
 /* ============================================================
@@ -485,7 +486,8 @@ function InvoiceWizard({
   onSaved: (saved: Invoice, wasEdit: boolean) => void;
 }) {
   const { t, lang, isRtl } = useI18n();
-  const { state, addInvoice, updateInvoice } = useStore();
+  const { state, addInvoice, updateInvoice, updateService, can } = useStore();
+  const toast = useToast();
   const reduce = useReducedMotion();
 
   const cur = t('currency');
@@ -495,6 +497,10 @@ function InvoiceWizard({
   const [dir, setDir] = useState(1);
   const [seed, setSeed] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  /** A catalogue service being corrected inline, without leaving the wizard. */
+  const [editingService, setEditingService] = useState<Service | null>(null);
+
+  const canEditService = can('services', 'edit');
 
   const [clientId, setClientId] = useState('');
   const [clientQuery, setClientQuery] = useState('');
@@ -762,36 +768,51 @@ function InvoiceWizard({
                   </span>
                 </button>
 
-                {/* quantity only appears once the line is on the invoice */}
+                {/* quantity — and inline editing — only once the line is on the invoice */}
                 {on && (
-                  <div className="mt-2.5 flex items-center justify-between gap-3 border-t border-brand-200/70 pt-2.5">
-                    <span className="text-2xs font-bold uppercase tracking-wide text-ink-500">
-                      {t('quantity')}
-                    </span>
-                    <div className="flex items-center gap-2">
-                      <IconButton
-                        label="-"
-                        variant="secondary"
-                        className="!h-8 !w-8"
-                        onClick={() => setQty(s.id, (picked[s.id] ?? 1) - 1)}
-                      >
-                        <Minus size={14} />
-                      </IconButton>
-                      <span className="w-9 text-center text-[13px] font-extrabold tabular-nums text-ink-900">
-                        {picked[s.id]}
+                  <div className="mt-2.5 space-y-2.5 border-t border-brand-200/70 pt-2.5">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-2xs font-bold uppercase tracking-wide text-ink-500">
+                        {t('quantity')}
                       </span>
-                      <IconButton
-                        label="+"
-                        variant="secondary"
-                        className="!h-8 !w-8"
-                        onClick={() => setQty(s.id, (picked[s.id] ?? 1) + 1)}
-                      >
-                        <Plus size={14} />
-                      </IconButton>
-                      <span className="ms-2 w-24 text-end text-[13px] font-extrabold tabular-nums text-brand-700">
-                        {fm(s.amount * (picked[s.id] ?? 1) * (1 + s.tva / 100))}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <IconButton
+                          label="-"
+                          variant="secondary"
+                          className="!h-8 !w-8"
+                          onClick={() => setQty(s.id, (picked[s.id] ?? 1) - 1)}
+                        >
+                          <Minus size={14} />
+                        </IconButton>
+                        <span className="w-9 text-center text-[13px] font-extrabold tabular-nums text-ink-900">
+                          {picked[s.id]}
+                        </span>
+                        <IconButton
+                          label="+"
+                          variant="secondary"
+                          className="!h-8 !w-8"
+                          onClick={() => setQty(s.id, (picked[s.id] ?? 1) + 1)}
+                        >
+                          <Plus size={14} />
+                        </IconButton>
+                        <span className="ms-2 w-24 text-end text-[13px] font-extrabold tabular-nums text-brand-700">
+                          {fm(s.amount * (picked[s.id] ?? 1) * (1 + s.tva / 100))}
+                        </span>
+                      </div>
                     </div>
+                    {/* correct this service's price, name or VAT without leaving the wizard */}
+                    {canEditService && (
+                      <div className="flex justify-end">
+                        <Button
+                          size="xs"
+                          variant="ghost"
+                          icon={<Pencil size={13} />}
+                          onClick={() => setEditingService(s)}
+                        >
+                          {t('editService')}
+                        </Button>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -954,7 +975,9 @@ function InvoiceWizard({
   return (
     <Modal
       open={open}
-      onClose={onClose}
+      // While the service sub-dialog is up it owns Escape/backdrop; the wizard
+      // underneath must not close and lose the invoice in progress.
+      onClose={() => !editingService && onClose()}
       size="lg"
       icon={<ReceiptText size={20} />}
       title={isEdit ? `${t('editInvoice')} ${formatInvoiceNo(editing.invoiceNo)}` : t('newInvoice')}
@@ -1048,6 +1071,21 @@ function InvoiceWizard({
           </motion.div>
         </AnimatePresence>
       </div>
+
+      {/* Correcting a service from step 2 — a dialog over the wizard. Because
+          the lines are derived from the catalogue, the totals refresh at once. */}
+      <ServiceForm
+        open={!!editingService}
+        editing={editingService}
+        onClose={() => setEditingService(null)}
+        onSave={(patch) => {
+          if (editingService) {
+            updateService(editingService.id, patch);
+            toast.success(t('serviceUpdated'));
+          }
+          setEditingService(null);
+        }}
+      />
     </Modal>
   );
 }
