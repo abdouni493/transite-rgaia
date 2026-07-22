@@ -1,0 +1,344 @@
+/* ============================================================
+   TransitPro — Domain model
+   ============================================================ */
+
+export type ID = string;
+export type ISODate = string; // yyyy-MM-dd
+export type ISODateTime = string; // yyyy-MM-ddTHH:mm
+
+/* ---------- Statuses ---------- */
+
+/** Customs / clearance pipeline status of a secondary client's car. */
+export const CUSTOMS_STATUSES = [
+  'non_arrive',
+  'arrive',
+  'saisie',
+  'liquide',
+  'sortie',
+  'remis_client',
+] as const;
+export type CustomsStatus = (typeof CUSTOMS_STATUSES)[number];
+
+/** Financial status, derived from payments vs total. */
+export const PAYMENT_STATUSES = ['unpaid', 'partial', 'paid'] as const;
+export type PaymentStatus = (typeof PAYMENT_STATUSES)[number];
+
+/** Principal client account state. */
+export const CLIENT_STATUSES = ['active', 'inactive'] as const;
+export type ClientStatus = (typeof CLIENT_STATUSES)[number];
+
+/* ---------- Core entities ---------- */
+
+export interface PrincipalClient {
+  id: ID;
+  firstName: string;
+  lastName: string;
+  phone: string;
+  address: string;
+  status: ClientStatus;
+  createdAt: ISODate;
+  notes?: string;
+}
+
+export interface Car {
+  name: string; // model, e.g. "Clio 5"
+  brand: string; // e.g. "Renault"
+  chassisNumber: string;
+}
+
+export interface SecondaryClient {
+  id: ID;
+  firstName: string;
+  lastName: string;
+  address: string;
+  principalClientId: ID;
+  containerId: ID;
+  car: Car;
+  price: number; // agreed price for this car (DZD)
+  customsStatus: CustomsStatus;
+  createdAt: ISODate;
+  phone?: string;
+}
+
+export interface Container {
+  id: ID;
+  name: string; // human label, e.g. "CNT-2026-014"
+  tcNumber: string; // TC number, e.g. "MSKU 483920-1"
+  createdAt: ISODate;
+  arrivalDate?: ISODate;
+  notes?: string;
+}
+
+export const MAX_CARS_PER_CONTAINER = 4;
+
+/* ---------- Money ---------- */
+
+export interface Payment {
+  id: ID;
+  containerId: ID;
+  principalClientId: ID;
+  amount: number;
+  date: ISODate;
+  time: string; // HH:mm
+  description?: string;
+  createdBy: string; // user name
+  createdAt: ISODateTime;
+}
+
+export type CashKind = 'deposit' | 'withdraw';
+
+export interface CashTransaction {
+  id: ID;
+  kind: CashKind;
+  amount: number;
+  date: ISODate;
+  time: string;
+  description?: string;
+  createdBy: string;
+  createdAt: ISODateTime;
+}
+
+/* ---------- Workers ---------- */
+
+export interface Role {
+  id: ID;
+  name: string;
+  system?: boolean;
+}
+
+export type SalaryMode = 'monthly' | 'daily';
+
+export interface WorkerSalary {
+  enabled: boolean;
+  mode: SalaryMode;
+  amount: number; // per month or per day
+}
+
+export interface WorkerAccount {
+  enabled: boolean;
+  email: string;
+  username: string;
+  password: string;
+}
+
+export interface Worker {
+  id: ID;
+  fullName: string;
+  birthday: ISODate;
+  idCardNumber?: string;
+  phone: string;
+  roleId: ID;
+  startDate: ISODate;
+  salary: WorkerSalary;
+  account: WorkerAccount;
+  permissions: Permissions;
+  active: boolean;
+  createdAt: ISODate;
+  avatarColor: string;
+}
+
+export interface Advance {
+  id: ID; // "Acompte"
+  workerId: ID;
+  date: ISODate;
+  amount: number;
+  description?: string;
+  settled: boolean; // deducted from a payroll run already
+  createdAt: ISODateTime;
+}
+
+export interface Absence {
+  id: ID;
+  workerId: ID;
+  date: ISODate;
+  cost: number; // deduction amount
+  description?: string;
+  settled: boolean;
+  createdAt: ISODateTime;
+}
+
+export interface PayrollRun {
+  id: ID;
+  workerId: ID;
+  periodLabel: string; // "2026-06" or "2026-06-01 → 2026-06-15"
+  periodStart: ISODate;
+  periodEnd: ISODate;
+  baseAmount: number;
+  advancesDeducted: number;
+  absencesDeducted: number;
+  netAmount: number; // editable manually
+  date: ISODate;
+  description?: string;
+  advanceIds: ID[];
+  absenceIds: ID[];
+  createdAt: ISODateTime;
+}
+
+/* ---------- Permissions ---------- */
+
+export const PAGE_KEYS = [
+  'dashboard',
+  'principalClients',
+  'secondaryClients',
+  'containers',
+  'customs',
+  'paymentTracking',
+  'caisse',
+  'workers',
+  'reports',
+  'settings',
+] as const;
+export type PageKey = (typeof PAGE_KEYS)[number];
+
+/** Per-page granted action keys. Empty array = page visible, read-only. */
+export type Permissions = Partial<Record<PageKey, string[]>>;
+
+export interface ActionDef {
+  key: string;
+  /** true = sensitive (payments / deletions) — highlighted in the permission UI */
+  sensitive?: boolean;
+}
+
+export interface PageDef {
+  key: PageKey;
+  actions: ActionDef[];
+}
+
+/** Canonical map of every page and every button action it exposes. */
+export const PAGE_ACTIONS: PageDef[] = [
+  { key: 'dashboard', actions: [{ key: 'viewStats' }, { key: 'viewAlerts' }] },
+  {
+    key: 'principalClients',
+    actions: [
+      { key: 'create' },
+      { key: 'view' },
+      { key: 'edit' },
+      { key: 'delete', sensitive: true },
+      { key: 'viewPayments', sensitive: true },
+      { key: 'addPayment', sensitive: true },
+      { key: 'viewHistory' },
+    ],
+  },
+  {
+    key: 'secondaryClients',
+    actions: [
+      { key: 'create' },
+      { key: 'view' },
+      { key: 'edit' },
+      { key: 'delete', sensitive: true },
+      { key: 'createContainerInline' },
+    ],
+  },
+  {
+    key: 'containers',
+    actions: [
+      { key: 'create' },
+      { key: 'view' },
+      { key: 'edit' },
+      { key: 'delete', sensitive: true },
+      { key: 'viewPaymentHistory', sensitive: true },
+      { key: 'viewRestPerClient', sensitive: true },
+    ],
+  },
+  {
+    key: 'customs',
+    actions: [{ key: 'view' }, { key: 'changeStatus', sensitive: true }],
+  },
+  {
+    key: 'paymentTracking',
+    actions: [
+      { key: 'addPayment', sensitive: true },
+      { key: 'viewHistory', sensitive: true },
+      { key: 'editPayment', sensitive: true },
+      { key: 'deletePayment', sensitive: true },
+      { key: 'print' },
+    ],
+  },
+  {
+    key: 'caisse',
+    actions: [
+      { key: 'createTransaction', sensitive: true },
+      { key: 'viewHistory', sensitive: true },
+      { key: 'deleteTransaction', sensitive: true },
+      { key: 'viewContainerPayments', sensitive: true },
+    ],
+  },
+  {
+    key: 'workers',
+    actions: [
+      { key: 'create' },
+      { key: 'view' },
+      { key: 'edit' },
+      { key: 'delete', sensitive: true },
+      { key: 'permissions', sensitive: true },
+      { key: 'advances', sensitive: true },
+      { key: 'absences' },
+      { key: 'payroll', sensitive: true },
+      { key: 'manageRoles' },
+    ],
+  },
+  { key: 'reports', actions: [{ key: 'generate' }, { key: 'drillDown' }, { key: 'print' }] },
+  {
+    key: 'settings',
+    actions: [
+      { key: 'company' },
+      { key: 'account' },
+      { key: 'backup', sensitive: true },
+      { key: 'restore', sensitive: true },
+    ],
+  },
+];
+
+/* ---------- Company / auth ---------- */
+
+export interface Company {
+  logo?: string; // data URL
+  name: string;
+  description: string;
+  email: string;
+  phone: string;
+  address: string;
+  nif: string;
+  nis: string;
+  article: string;
+  rc: string;
+  currency: string;
+}
+
+export interface AdminUser {
+  id: ID;
+  name: string;
+  username: string;
+  email: string;
+  password: string;
+  role: 'admin';
+  createdAt: ISODate;
+}
+
+/** The signed-in principal — either the admin, or a worker with an account. */
+export interface Session {
+  kind: 'admin' | 'worker';
+  id: ID;
+  name: string;
+  username: string;
+  email: string;
+  roleName: string;
+  permissions: Permissions | 'all';
+}
+
+/* ---------- Aggregate state ---------- */
+
+export interface AppState {
+  admins: AdminUser[];
+  principalClients: PrincipalClient[];
+  secondaryClients: SecondaryClient[];
+  containers: Container[];
+  payments: Payment[];
+  cash: CashTransaction[];
+  workers: Worker[];
+  roles: Role[];
+  advances: Advance[];
+  absences: Absence[];
+  payrolls: PayrollRun[];
+  company: Company;
+}
