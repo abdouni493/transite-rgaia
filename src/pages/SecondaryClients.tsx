@@ -89,7 +89,8 @@ import {
 type Filter = 'all' | CustomsStatus;
 
 interface WizardForm {
-  /** Typed by hand, pre-filled with the next free number. */
+  /** Optional: left empty the store hands out the next free number, and the
+      Douane screen asks for the real one when the file is marked "Saisie". */
   declarationNo: string;
   firstName: string;
   lastName: string;
@@ -854,9 +855,9 @@ function SecondaryDialog({
             warehouseId: editing.warehouseId ?? '',
             price: String(editing.price),
           }
-        : // pre-filled with the next free number: leave it alone and the
-          // behaviour is exactly what it was before the field existed
-          { ...EMPTY_FORM, declarationNo: String(nextDeclarationNo(state)) },
+        : // the declaration number stays empty: filing a car no longer waits
+          // for it, and the store numbers the row on save
+          { ...EMPTY_FORM },
     );
   }
 
@@ -898,12 +899,17 @@ function SecondaryDialog({
     [state, form.carBrandId],
   );
   const numericPrice = Number(form.price.replace(/\s/g, ''));
+  const typedDeclaration = form.declarationNo.trim();
   const numericDeclaration = Number(form.declarationNo.replace(/\s/g, ''));
+  /** Shown as the placeholder, and what the store will hand out if left empty. */
+  const autoDeclaration = useMemo(() => nextDeclarationNo(state), [state]);
 
   /** The unique index in Postgres is the real guard; this catches it earlier. */
-  const declarationTaken = state.secondaryClients.some(
-    (c) => c.id !== editing?.id && c.declarationNo === numericDeclaration,
-  );
+  const declarationTaken =
+    !!typedDeclaration &&
+    state.secondaryClients.some(
+      (c) => c.id !== editing?.id && c.declarationNo === numericDeclaration,
+    );
 
   /** A container is blocked when full — unless the car being edited already sits in it. */
   const isBlocked = (id: string) => {
@@ -916,13 +922,13 @@ function SecondaryDialog({
   const validate = (which: number): Record<string, string> => {
     const e: Record<string, string> = {};
     if (which === 0) {
-      if (
-        !form.declarationNo.trim() ||
-        !Number.isInteger(numericDeclaration) ||
-        numericDeclaration < 1
-      )
-        e.declarationNo = t('invalidNumber');
-      else if (declarationTaken) e.declarationNo = t('declarationNoTaken');
+      // Empty is allowed: the number is assigned on save and can be typed
+      // later, on the Douane screen. Only a typed number is checked.
+      if (typedDeclaration) {
+        if (!Number.isInteger(numericDeclaration) || numericDeclaration < 1)
+          e.declarationNo = t('invalidNumber');
+        else if (declarationTaken) e.declarationNo = t('declarationNoTaken');
+      }
       if (!form.firstName.trim()) e.firstName = t('requiredField');
       if (!form.lastName.trim()) e.lastName = t('requiredField');
       if (!form.address.trim()) e.address = t('requiredField');
@@ -969,7 +975,9 @@ function SecondaryDialog({
   /* Catalog ids become plain names on the row: a car keeps the wording it was
      filed under even if the catalog entry is renamed later. */
   const payload = () => ({
-    declarationNo: numericDeclaration,
+    // omitted when the field is empty: creating numbers the row, editing keeps
+    // the number the file already carries
+    ...(typedDeclaration ? { declarationNo: numericDeclaration } : {}),
     firstName: form.firstName.trim(),
     lastName: form.lastName.trim(),
     address: form.address.trim(),
@@ -1073,10 +1081,18 @@ function SecondaryDialog({
         value={form.declarationNo}
         onChange={(ev) => setForm({ ...form, declarationNo: ev.target.value })}
         error={errors.declarationNo}
-        hint={t('declarationNoManualHint')}
+        placeholder={
+          isEdit
+            ? undefined
+            : t('declarationNoAutoPlaceholder', { no: formatDeclarationNo(autoDeclaration) })
+        }
+        hint={
+          isEdit
+            ? t('declarationNoManualHint')
+            : t('declarationNoOptionalHint', { no: formatDeclarationNo(autoDeclaration) })
+        }
         icon={<Hash size={16} />}
         className="font-mono"
-        required
       />
       <div className="grid gap-4 sm:grid-cols-2">
         <Input
@@ -1578,9 +1594,11 @@ function SecondaryDialog({
       <DataPoint
         label={t('declarationNo')}
         value={
-          Number.isFinite(numericDeclaration) && numericDeclaration > 0
+          typedDeclaration && Number.isFinite(numericDeclaration) && numericDeclaration > 0
             ? formatDeclarationNo(numericDeclaration)
-            : '—'
+            : editing
+              ? formatDeclarationNo(editing.declarationNo)
+              : t('declarationNoAutoPlaceholder', { no: formatDeclarationNo(autoDeclaration) })
         }
         icon={<Hash size={11} />}
         mono

@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import { useI18n } from '../i18n/I18nProvider';
 import { useStore } from '../store/AppStore';
-import { fullName } from '../lib/selectors';
+import { fullName, nextDeclarationNo } from '../lib/selectors';
 import {
   formatDate,
   formatDeclarationNo,
@@ -32,6 +32,7 @@ import {
   Card,
   EmptyState,
   IconButton,
+  Input,
   ProgressBar,
   SearchBar,
   SectionTitle,
@@ -41,7 +42,7 @@ import {
   TONE_GRAD,
   cx,
 } from '../components/ui/primitives';
-import { DropdownMenu, useConfirm, useToast } from '../components/ui/overlays';
+import { DropdownMenu, Modal, useConfirm, useToast } from '../components/ui/overlays';
 import { DeliveryReceiptDialog } from '../components/print/DeliveryReceiptPrint';
 import {
   CUSTOMS_META,
@@ -74,6 +75,9 @@ export function Customs() {
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
   const [receiptFor, setReceiptFor] = useState<SecondaryClient | null>(null);
+  /* "Saisie" is the moment the declaration is filed — the number is asked for
+     then rather than confirmed blindly. */
+  const [saisieFor, setSaisieFor] = useState<SecondaryClient | null>(null);
 
   /* ---------- enriched rows ---------- */
   const rows = useMemo<Row[]>(
@@ -131,6 +135,13 @@ export function Customs() {
 
   /* ---------- status change ---------- */
   const changeStatus = async (car: SecondaryClient, status: CustomsStatus) => {
+    /* Filing the declaration: show the number the file carries and let it be
+       typed or corrected, instead of a yes/no confirmation. */
+    if (status === 'saisie') {
+      setSaisieFor(car);
+      return;
+    }
+
     const ok = await confirm({
       title: t('confirmStatusChange'),
       message: t('confirmStatusMsg', { name: fullName(car), status: t(CUSTOMS_META[status].key) }),
@@ -155,6 +166,13 @@ export function Customs() {
       });
       if (yes) setReceiptFor({ ...car, customsStatus: status });
     }
+  };
+
+  const confirmSaisie = (declarationNo: number) => {
+    if (!saisieFor) return;
+    updateSecondary(saisieFor.id, { declarationNo, customsStatus: 'saisie' });
+    setSaisieFor(null);
+    toast.success(t('statusChanged'));
   };
 
   return (
@@ -291,8 +309,121 @@ export function Customs() {
         </motion.div>
       )}
 
+      <DeclarationDialog
+        car={saisieFor}
+        others={state.secondaryClients}
+        fallbackNo={nextDeclarationNo(state)}
+        onClose={() => setSaisieFor(null)}
+        onConfirm={confirmSaisie}
+      />
+
       <DeliveryReceiptDialog car={receiptFor} onClose={() => setReceiptFor(null)} />
     </div>
+  );
+}
+
+/* ============================================================
+   Declaration number — asked for when a file is marked "Saisie"
+   ============================================================ */
+
+function DeclarationDialog({
+  car,
+  others,
+  fallbackNo,
+  onClose,
+  onConfirm,
+}: {
+  car: SecondaryClient | null;
+  others: SecondaryClient[];
+  /** Used when the file was created without a number of its own. */
+  fallbackNo: number;
+  onClose: () => void;
+  onConfirm: (declarationNo: number) => void;
+}) {
+  const { t } = useI18n();
+  const [value, setValue] = useState('');
+  const [error, setError] = useState('');
+  const [seed, setSeed] = useState<string | null>(null);
+
+  /* Re-seed whenever the dialog opens on another car. */
+  const target = car?.id ?? null;
+  if (target !== seed) {
+    setSeed(target);
+    setError('');
+    setValue(car ? String(car.declarationNo > 0 ? car.declarationNo : fallbackNo) : '');
+  }
+
+  if (!car) return null;
+
+  const submit = () => {
+    const n = Number(value.replace(/\s/g, ''));
+    if (!value.trim() || !Number.isInteger(n) || n < 1) {
+      setError(t('invalidNumber'));
+      return;
+    }
+    if (others.some((c) => c.id !== car.id && c.declarationNo === n)) {
+      setError(t('declarationNoTaken'));
+      return;
+    }
+    onConfirm(n);
+  };
+
+  return (
+    <Modal
+      open={!!car}
+      onClose={onClose}
+      size="sm"
+      icon={<Hash size={20} />}
+      title={t('saisieDeclarationTitle')}
+      subtitle={t('saisieDeclarationSubtitle', {
+        name: fullName(car),
+        car: `${car.car.brand} ${car.car.name}`,
+      })}
+      footer={
+        <div className="flex justify-end gap-2">
+          <Button variant="secondary" onClick={onClose}>
+            {t('cancel')}
+          </Button>
+          <Button icon={<FileSpreadsheet size={16} />} onClick={submit}>
+            {t('saisieDeclarationConfirm')}
+          </Button>
+        </div>
+      }
+    >
+      <div className="space-y-4">
+        <div className="flex items-center justify-between gap-3 rounded-xl bg-grad-brand-soft p-3 ring-1 ring-brand-100">
+          <span className="text-2xs font-bold uppercase tracking-wide text-ink-500">
+            {t('currentDeclarationNo')}
+          </span>
+          <span dir="ltr" className="font-mono text-sm font-extrabold text-ink-900">
+            {car.declarationNo > 0 ? formatDeclarationNo(car.declarationNo) : '—'}
+          </span>
+        </div>
+
+        <Input
+          label={t('declarationNo')}
+          type="number"
+          inputMode="numeric"
+          min={1}
+          step={1}
+          dir="ltr"
+          autoFocus
+          value={value}
+          onChange={(ev) => {
+            setValue(ev.target.value);
+            setError('');
+          }}
+          onKeyDown={(ev) => {
+            if (ev.key === 'Enter') submit();
+          }}
+          error={error}
+          hint={t('saisieDeclarationHint')}
+          icon={<Hash size={16} />}
+          className="font-mono"
+          required
+        />
+      </div>
+    </Modal>
   );
 }
 
@@ -423,7 +554,9 @@ function CarCard({
               key: s,
               label: t(CUSTOMS_META[s].key),
               icon: CUSTOMS_META[s].icon,
-              disabled: s === car.customsStatus,
+              // "Saisie" stays clickable on a file already at that stage: it is
+              // the way back into the declaration number to correct it.
+              disabled: s === car.customsStatus && s !== 'saisie',
               onClick: () => onChangeStatus(car, s),
             }))}
           />
