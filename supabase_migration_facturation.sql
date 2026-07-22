@@ -48,6 +48,19 @@ create table if not exists public.car_models (
 
 create index if not exists car_models_brand_idx on public.car_models (brand_id);
 
+-- The unique above only fires when the table is created for the first time.
+-- The seed below resolves conflicts against it, so make sure it is really
+-- there even if the table was put in place by hand.
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint where conname = 'car_models_brand_id_name_key'
+  ) then
+    alter table public.car_models
+      add constraint car_models_brand_id_name_key unique (brand_id, name);
+  end if;
+end $$;
+
 -- Seed the catalog from what the secondary clients already carry, so the new
 -- pickers open with the makes and models the office has been typing by hand.
 insert into public.car_brands (name)
@@ -286,3 +299,88 @@ begin
 end $$;
 
 commit;
+
+-- ============================================================
+--  Vérification — s'exécute après le commit et n'écrit rien.
+--
+--  L'éditeur SQL de Supabase n'affiche que le résultat de la dernière
+--  requête : c'est ce tableau. Chaque ligne doit être ✅. Une ligne
+--  ❌ signifie que ce morceau n'est pas en place — rejouer ce fichier.
+--
+--  Un export de schéma ne montre ni les politiques RLS, ni les index,
+--  ni les lignes du catalogue de permissions : ce rapport, si.
+-- ============================================================
+
+with checks (ord, item, ok) as (
+
+  -- colonnes et tables
+  select 1, 'colonne  company.stamp', exists (
+    select 1 from information_schema.columns
+     where table_schema = 'public' and table_name = 'company' and column_name = 'stamp')
+  union all select 2, 'colonne  secondary_clients.warehouse_id', exists (
+    select 1 from information_schema.columns
+     where table_schema = 'public' and table_name = 'secondary_clients'
+       and column_name = 'warehouse_id')
+  union all select 3, 'table    warehouses', to_regclass('public.warehouses') is not null
+  union all select 4, 'table    car_brands', to_regclass('public.car_brands') is not null
+  union all select 5, 'table    car_models', to_regclass('public.car_models') is not null
+  union all select 6, 'table    services',   to_regclass('public.services')   is not null
+  union all select 7, 'table    invoices',   to_regclass('public.invoices')   is not null
+  union all select 8, 'séquence invoice_no_seq',
+    to_regclass('public.invoice_no_seq') is not null
+
+  -- RLS active sur chaque nouvelle table
+  union all select 10, 'RLS      warehouses', coalesce(
+    (select relrowsecurity from pg_class where relname = 'warehouses'
+      and relnamespace = 'public'::regnamespace), false)
+  union all select 11, 'RLS      car_brands', coalesce(
+    (select relrowsecurity from pg_class where relname = 'car_brands'
+      and relnamespace = 'public'::regnamespace), false)
+  union all select 12, 'RLS      car_models', coalesce(
+    (select relrowsecurity from pg_class where relname = 'car_models'
+      and relnamespace = 'public'::regnamespace), false)
+  union all select 13, 'RLS      services', coalesce(
+    (select relrowsecurity from pg_class where relname = 'services'
+      and relnamespace = 'public'::regnamespace), false)
+  union all select 14, 'RLS      invoices', coalesce(
+    (select relrowsecurity from pg_class where relname = 'invoices'
+      and relnamespace = 'public'::regnamespace), false)
+
+  -- politiques : sans elles, les écrans restent vides
+  union all select 20, 'policies warehouses (4)',
+    (select count(*) from pg_policies
+      where schemaname = 'public' and tablename = 'warehouses') >= 4
+  union all select 21, 'policies car_brands (2)',
+    (select count(*) from pg_policies
+      where schemaname = 'public' and tablename = 'car_brands') >= 2
+  union all select 22, 'policies car_models (2)',
+    (select count(*) from pg_policies
+      where schemaname = 'public' and tablename = 'car_models') >= 2
+  union all select 23, 'policies services (4)',
+    (select count(*) from pg_policies
+      where schemaname = 'public' and tablename = 'services') >= 4
+  union all select 24, 'policies invoices (4)',
+    (select count(*) from pg_policies
+      where schemaname = 'public' and tablename = 'invoices') >= 4
+
+  -- catalogue de permissions : sans lui, le dialogue Permissions est incomplet
+  union all select 30, 'catalogue app_pages (3 nouvelles)',
+    (select count(*) from public.app_pages
+      where key in ('warehouses', 'services', 'invoices')) = 3
+  union all select 31, 'catalogue app_actions (14 nouvelles)',
+    (select count(*) from public.app_actions
+      where page_key in ('warehouses', 'services', 'invoices')
+         or (page_key = 'secondaryClients'
+             and key in ('createWarehouseInline', 'createCarInline'))) >= 14
+
+  -- realtime
+  union all select 40, 'realtime (5 tables)',
+    (select count(*) from pg_publication_tables
+      where pubname = 'supabase_realtime' and schemaname = 'public'
+        and tablename in ('warehouses', 'car_brands', 'car_models', 'services', 'invoices')) = 5
+)
+select
+  case when ok then '✅' else '❌ MANQUANT' end as etat,
+  item
+from checks
+order by ok, ord;
