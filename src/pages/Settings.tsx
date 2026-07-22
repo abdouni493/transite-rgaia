@@ -34,6 +34,7 @@ import {
   Textarea,
 } from '../components/ui/primitives';
 import { Tabs, useConfirm, useToast } from '../components/ui/overlays';
+import { BrandMark } from '../components/layout/BrandMark';
 import { PageHeader } from '../components/shared';
 import type { TabDef } from '../components/ui/overlays';
 
@@ -162,15 +163,8 @@ function CompanyPanel() {
           className="mb-4"
         />
         <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center">
-          {state.company.logo ? (
-            <img
-              src={state.company.logo}
-              alt={state.company.name}
-              className="h-20 w-20 shrink-0 rounded-2xl object-cover ring-2 ring-ink-200"
-            />
-          ) : (
-            <Avatar name={state.company.name || 'TP'} size="xl" gradient="from-brand-800 to-ocean-400" />
-          )}
+          {/* mirrors the circular mark used by the sidebar and the login screen */}
+          <BrandMark logo={state.company.logo} name={state.company.name} size="xl" />
           <div className="flex flex-wrap gap-2">
             <input
               ref={fileRef}

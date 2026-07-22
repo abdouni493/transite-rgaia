@@ -6,7 +6,6 @@ import {
   CheckCircle2,
   FileSpreadsheet,
   KeyRound,
-  ShieldCheck,
   User,
   UserPlus,
   Wallet,
@@ -16,7 +15,9 @@ import { useI18n } from '../i18n/I18nProvider';
 import { useStore } from '../store/AppStore';
 import { useToast } from '../components/ui/overlays';
 import { Button, Input, PasswordInput } from '../components/ui/primitives';
+import { BrandMark } from '../components/layout/BrandMark';
 import { LangSwitch } from '../components/layout/LangSwitch';
+import { readBrand } from '../lib/brand';
 import type { TranslationKey } from '../i18n/translations';
 
 type Mode = 'login' | 'register';
@@ -26,6 +27,11 @@ export function Login() {
   const { login, registerAdmin } = useStore();
   const toast = useToast();
   const reduce = useReducedMotion();
+
+  // Nobody is signed in yet, so the company row is out of reach — the branding
+  // saved on the last successful session stands in for it.
+  const [brand] = useState(readBrand);
+  const companyName = brand.name || t('appName');
 
   const [mode, setMode] = useState<Mode>('login');
   const [busy, setBusy] = useState(false);
@@ -131,17 +137,17 @@ export function Login() {
             transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
             className="hidden lg:block"
           >
-            <motion.span
+            <motion.div
               initial={{ scale: 0.8, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               transition={{ type: 'spring', stiffness: 300, damping: 20, delay: 0.1 }}
-              className="mb-6 inline-flex h-16 w-16 items-center justify-center rounded-3xl bg-grad-brand text-white shadow-float"
+              className="mb-6 inline-block"
             >
-              <ShieldCheck size={32} />
-            </motion.span>
+              <BrandMark logo={brand.logo} name={brand.name} size="xl" />
+            </motion.div>
 
             <h1 className="text-4xl font-extrabold leading-[1.1] tracking-tight text-ink-900 xl:text-5xl">
-              <span className="gradient-text">TransitPro</span>
+              <span className="gradient-text">{companyName}</span>
             </h1>
             <p className="mt-3 max-w-md text-lg font-medium text-ink-600">{t('appTagline')}</p>
 
@@ -173,12 +179,10 @@ export function Login() {
             <div className="overflow-hidden rounded-3xl border border-white/70 bg-white/85 shadow-[0_30px_70px_-25px_rgb(15_23_42_/_0.25)] backdrop-blur-2xl">
               {/* mobile brand */}
               <div className="flex items-center gap-3 border-b border-ink-200/60 px-6 py-4 lg:hidden">
-                <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-grad-brand text-white shadow-float">
-                  <ShieldCheck size={20} />
-                </span>
-                <div>
-                  <p className="text-[15px] font-extrabold text-ink-900">TransitPro</p>
-                  <p className="text-2xs font-semibold text-brand-600">{t('appTagline')}</p>
+                <BrandMark logo={brand.logo} name={brand.name} size="sm" />
+                <div className="min-w-0">
+                  <p className="truncate text-[15px] font-extrabold text-ink-900">{companyName}</p>
+                  <p className="truncate text-2xs font-semibold text-brand-600">{t('appTagline')}</p>
                 </div>
               </div>
 

@@ -11,7 +11,6 @@ import {
   LogOut,
   Menu,
   Settings as SettingsIcon,
-  ShieldCheck,
   UserCog,
   Users,
   UsersRound,
@@ -25,6 +24,7 @@ import type { PageKey } from '../../lib/types';
 import { Avatar, cx, IconButton } from '../ui/primitives';
 import { useConfirm } from '../ui/overlays';
 import { pageVariants, pageVariantsReduced } from '../ui/motion';
+import { BrandMark } from './BrandMark';
 import { LangSwitch } from './LangSwitch';
 
 interface NavDef {
@@ -100,9 +100,7 @@ export function AppLayout({
           collapsed && !mobile && 'justify-center px-2',
         )}
       >
-        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-grad-brand text-white shadow-float">
-          <ShieldCheck size={21} />
-        </span>
+        <BrandMark logo={state.company.logo} name={state.company.name} size="sm" />
         <AnimatePresence initial={false}>
           {(!collapsed || mobile) && (
             <motion.div

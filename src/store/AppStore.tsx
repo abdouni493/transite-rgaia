@@ -36,6 +36,7 @@ import {
   setDbErrorHandler,
   workerRow,
 } from '../lib/db';
+import { writeBrand } from '../lib/brand';
 import { todayISO } from '../lib/format';
 import { useToast } from '../components/ui/overlays';
 import { PAGE_KEYS } from '../lib/types';
@@ -241,6 +242,8 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       const data = await fetchAll();
       if (cancelled) return;
       setState(data);
+      // Keep the login screen's branding in step with the company settings.
+      writeBrand({ name: data.company.name, logo: data.company.logo });
       setLoading(false);
     };
 
@@ -764,7 +767,11 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   /* ---------------- settings ---------------- */
 
   const updateCompany = useCallback<StoreValue['updateCompany']>((patch) => {
-    setState((s) => ({ ...s, company: { ...s.company, ...patch } }));
+    setState((s) => {
+      const company = { ...s.company, ...patch };
+      writeBrand({ name: company.name, logo: company.logo });
+      return { ...s, company };
+    });
     void run(
       'company',
       supabase.from('company').update({ ...companyRow(patch), updated_at: new Date().toISOString() }).eq('id', 1),
