@@ -12,16 +12,22 @@ import type {
   Advance,
   AdminUser,
   AppState,
+  CarBrand,
+  CarModel,
   CashTransaction,
   Company,
   Container,
   ID,
+  Invoice,
+  InvoiceLine,
   Payment,
   PayrollRun,
   Permissions,
   PrincipalClient,
   Role,
   SecondaryClient,
+  Service,
+  Warehouse,
   Worker,
 } from './types';
 
@@ -45,6 +51,11 @@ export const EMPTY_STATE: AppState = {
   principalClients: [],
   secondaryClients: [],
   containers: [],
+  warehouses: [],
+  carBrands: [],
+  carModels: [],
+  services: [],
+  invoices: [],
   payments: [],
   cash: [],
   workers: [],
@@ -93,6 +104,65 @@ const toContainer = (r: Row): Container => ({
   notes: (r.notes as string) ?? undefined,
 });
 
+const toWarehouse = (r: Row): Warehouse => ({
+  id: str(r.id),
+  name: str(r.name),
+  address: str(r.address),
+  phone: str(r.phone),
+  email: str(r.email),
+  description: str(r.description),
+  createdAt: day(r.created_at),
+});
+
+const toCarBrand = (r: Row): CarBrand => ({
+  id: str(r.id),
+  name: str(r.name),
+  createdAt: day(r.created_at),
+});
+
+const toCarModel = (r: Row): CarModel => ({
+  id: str(r.id),
+  brandId: str(r.brand_id),
+  name: str(r.name),
+  createdAt: day(r.created_at),
+});
+
+const toService = (r: Row): Service => ({
+  id: str(r.id),
+  name: str(r.name),
+  amount: num(r.amount),
+  tva: num(r.tva),
+  description: str(r.description),
+  createdAt: day(r.created_at),
+});
+
+/** Lines are stored as jsonb; anything malformed degrades to an empty list. */
+const toInvoiceLines = (v: unknown): InvoiceLine[] => {
+  if (!Array.isArray(v)) return [];
+  return v.map((raw) => {
+    const l = (raw ?? {}) as Row;
+    return {
+      serviceId: str(l.serviceId),
+      name: str(l.name),
+      amount: num(l.amount),
+      tva: num(l.tva),
+      quantity: num(l.quantity) || 1,
+    };
+  });
+};
+
+const toInvoice = (r: Row): Invoice => ({
+  id: str(r.id),
+  invoiceNo: num(r.invoice_no),
+  secondaryClientId: str(r.secondary_client_id),
+  date: day(r.date),
+  carPrice: num(r.car_price),
+  lines: toInvoiceLines(r.lines),
+  notes: (r.notes as string) ?? undefined,
+  createdBy: str(r.created_by),
+  createdAt: str(r.created_at).slice(0, 16),
+});
+
 const toSecondary = (r: Row): SecondaryClient => ({
   id: str(r.id),
   declarationNo: num(r.declaration_no),
@@ -102,6 +172,7 @@ const toSecondary = (r: Row): SecondaryClient => ({
   phone: (r.phone as string) ?? undefined,
   principalClientId: str(r.principal_client_id),
   containerId: str(r.container_id),
+  warehouseId: (r.warehouse_id as string) ?? undefined,
   car: {
     brand: str(r.car_brand),
     name: str(r.car_name),
@@ -203,6 +274,7 @@ const toCompany = (r: Row | null): Company =>
   r
     ? {
         logo: (r.logo as string) ?? undefined,
+        stamp: (r.stamp as string) ?? undefined,
         name: str(r.name),
         description: str(r.description),
         email: str(r.email),
@@ -244,6 +316,40 @@ export const containerRow = (c: Partial<Container>) => ({
   ...(c.notes !== undefined && { notes: c.notes ?? null }),
 });
 
+export const warehouseRow = (w: Partial<Warehouse>) => ({
+  ...(w.name !== undefined && { name: w.name }),
+  ...(w.address !== undefined && { address: w.address }),
+  ...(w.phone !== undefined && { phone: w.phone }),
+  ...(w.email !== undefined && { email: w.email }),
+  ...(w.description !== undefined && { description: w.description }),
+});
+
+export const carBrandRow = (b: Partial<CarBrand>) => ({
+  ...(b.name !== undefined && { name: b.name }),
+});
+
+export const carModelRow = (m: Partial<CarModel>) => ({
+  ...(m.brandId !== undefined && { brand_id: m.brandId }),
+  ...(m.name !== undefined && { name: m.name }),
+});
+
+export const serviceRow = (s: Partial<Service>) => ({
+  ...(s.name !== undefined && { name: s.name }),
+  ...(s.amount !== undefined && { amount: s.amount }),
+  ...(s.tva !== undefined && { tva: s.tva }),
+  ...(s.description !== undefined && { description: s.description }),
+});
+
+export const invoiceRow = (i: Partial<Invoice>) => ({
+  ...(i.invoiceNo !== undefined && { invoice_no: i.invoiceNo }),
+  ...(i.secondaryClientId !== undefined && { secondary_client_id: i.secondaryClientId }),
+  ...(i.date !== undefined && { date: i.date }),
+  ...(i.carPrice !== undefined && { car_price: i.carPrice }),
+  ...(i.lines !== undefined && { lines: i.lines }),
+  ...(i.notes !== undefined && { notes: i.notes ?? null }),
+  ...(i.createdBy !== undefined && { created_by: i.createdBy }),
+});
+
 export const secondaryRow = (c: Partial<SecondaryClient>) => ({
   ...(c.declarationNo !== undefined && { declaration_no: c.declarationNo }),
   ...(c.firstName !== undefined && { first_name: c.firstName }),
@@ -252,6 +358,7 @@ export const secondaryRow = (c: Partial<SecondaryClient>) => ({
   ...(c.phone !== undefined && { phone: c.phone ?? null }),
   ...(c.principalClientId !== undefined && { principal_client_id: c.principalClientId }),
   ...(c.containerId !== undefined && { container_id: c.containerId }),
+  ...(c.warehouseId !== undefined && { warehouse_id: c.warehouseId || null }),
   ...(c.car !== undefined && {
     car_brand: c.car.brand,
     car_name: c.car.name,
@@ -336,6 +443,7 @@ export const payrollRow = (p: Partial<PayrollRun>) => ({
 
 export const companyRow = (c: Partial<Company>) => ({
   ...(c.logo !== undefined && { logo: c.logo ?? null }),
+  ...(c.stamp !== undefined && { stamp: c.stamp ?? null }),
   ...(c.name !== undefined && { name: c.name }),
   ...(c.description !== undefined && { description: c.description }),
   ...(c.email !== undefined && { email: c.email }),
@@ -377,6 +485,11 @@ export async function fetchAll(): Promise<AppState> {
     workers,
     principalClients,
     containers,
+    warehouses,
+    carBrands,
+    carModels,
+    services,
+    invoices,
     secondaryClients,
     payments,
     cash,
@@ -390,6 +503,11 @@ export async function fetchAll(): Promise<AppState> {
     table('workers', toWorker, 'created_at'),
     table('principal_clients', toPrincipal, 'created_at'),
     table('containers', toContainer, 'created_at'),
+    table('warehouses', toWarehouse, 'created_at'),
+    table('car_brands', toCarBrand),
+    table('car_models', toCarModel),
+    table('services', toService, 'created_at'),
+    table('invoices', toInvoice, 'date'),
     table('secondary_clients', toSecondary, 'created_at'),
     table('payments', toPayment, 'date'),
     table('cash_transactions', toCash, 'date'),
@@ -405,6 +523,12 @@ export async function fetchAll(): Promise<AppState> {
     workers,
     principalClients,
     containers,
+    warehouses,
+    // the two catalog lists read best alphabetically, not by creation date
+    carBrands: carBrands.sort((a, b) => a.name.localeCompare(b.name)),
+    carModels: carModels.sort((a, b) => a.name.localeCompare(b.name)),
+    services,
+    invoices,
     secondaryClients,
     payments,
     cash,

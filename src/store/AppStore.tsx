@@ -24,20 +24,25 @@ import {
   EMPTY_STATE,
   absenceRow,
   advanceRow,
+  carBrandRow,
+  carModelRow,
   cashRow,
   companyRow,
   containerRow,
   fetchAll,
+  invoiceRow,
   paymentRow,
   payrollRow,
   principalRow,
   run,
   secondaryRow,
+  serviceRow,
   setDbErrorHandler,
+  warehouseRow,
   workerRow,
 } from '../lib/db';
 import { writeBrand } from '../lib/brand';
-import { nextDeclarationNo, nextVersementRef } from '../lib/selectors';
+import { nextDeclarationNo, nextInvoiceNo, nextVersementRef } from '../lib/selectors';
 import { todayISO } from '../lib/format';
 import { useToast } from '../components/ui/overlays';
 import { PAGE_KEYS } from '../lib/types';
@@ -46,10 +51,13 @@ import type {
   Advance,
   AdminUser,
   AppState,
+  CarBrand,
+  CarModel,
   CashTransaction,
   Company,
   Container,
   ID,
+  Invoice,
   PageKey,
   Payment,
   PayrollRun,
@@ -57,7 +65,9 @@ import type {
   PrincipalClient,
   Role,
   SecondaryClient,
+  Service,
   Session,
+  Warehouse,
   Worker,
 } from '../lib/types';
 
@@ -109,6 +119,24 @@ interface StoreValue {
   addContainer: (c: Omit<Container, 'id' | 'createdAt'>) => Container;
   updateContainer: (id: ID, patch: Partial<Container>) => void;
   deleteContainer: (id: ID) => void;
+
+  /* warehouses */
+  addWarehouse: (w: Omit<Warehouse, 'id' | 'createdAt'>) => Warehouse;
+  updateWarehouse: (id: ID, patch: Partial<Warehouse>) => void;
+  deleteWarehouse: (id: ID) => void;
+
+  /* car catalog */
+  addCarBrand: (name: string) => CarBrand;
+  addCarModel: (brandId: ID, name: string) => CarModel;
+
+  /* services */
+  addService: (s: Omit<Service, 'id' | 'createdAt'>) => Service;
+  updateService: (id: ID, patch: Partial<Service>) => void;
+  deleteService: (id: ID) => void;
+
+  /* invoices */
+  addInvoice: (i: Omit<Invoice, 'id' | 'createdAt' | 'createdBy' | 'invoiceNo'>) => Invoice;
+  deleteInvoice: (id: ID) => void;
 
   /* payments */
   addPayment: (p: Omit<Payment, 'id' | 'createdAt' | 'createdBy' | 'refNo'>) => Payment;
@@ -410,12 +438,18 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const deletePrincipal = useCallback<StoreValue['deletePrincipal']>((id) => {
-    setState((s) => ({
-      ...s,
-      principalClients: s.principalClients.filter((c) => c.id !== id),
-      secondaryClients: s.secondaryClients.filter((c) => c.principalClientId !== id),
-      payments: s.payments.filter((p) => p.principalClientId !== id),
-    }));
+    setState((s) => {
+      const orphaned = new Set(
+        s.secondaryClients.filter((c) => c.principalClientId === id).map((c) => c.id),
+      );
+      return {
+        ...s,
+        principalClients: s.principalClients.filter((c) => c.id !== id),
+        secondaryClients: s.secondaryClients.filter((c) => c.principalClientId !== id),
+        payments: s.payments.filter((p) => p.principalClientId !== id),
+        invoices: s.invoices.filter((i) => !orphaned.has(i.secondaryClientId)),
+      };
+    });
     void run('principal_clients', supabase.from('principal_clients').delete().eq('id', id));
   }, []);
 
@@ -452,7 +486,11 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const deleteSecondary = useCallback<StoreValue['deleteSecondary']>((id) => {
-    setState((s) => ({ ...s, secondaryClients: s.secondaryClients.filter((c) => c.id !== id) }));
+    setState((s) => ({
+      ...s,
+      secondaryClients: s.secondaryClients.filter((c) => c.id !== id),
+      invoices: s.invoices.filter((i) => i.secondaryClientId !== id),
+    }));
     void run('secondary_clients', supabase.from('secondary_clients').delete().eq('id', id));
   }, []);
 
@@ -474,13 +512,116 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const deleteContainer = useCallback<StoreValue['deleteContainer']>((id) => {
+    setState((s) => {
+      const orphaned = new Set(
+        s.secondaryClients.filter((c) => c.containerId === id).map((c) => c.id),
+      );
+      return {
+        ...s,
+        containers: s.containers.filter((c) => c.id !== id),
+        secondaryClients: s.secondaryClients.filter((c) => c.containerId !== id),
+        payments: s.payments.filter((p) => p.containerId !== id),
+        invoices: s.invoices.filter((i) => !orphaned.has(i.secondaryClientId)),
+      };
+    });
+    void run('containers', supabase.from('containers').delete().eq('id', id));
+  }, []);
+
+  /* ---------------- warehouses ---------------- */
+
+  const addWarehouse = useCallback<StoreValue['addWarehouse']>((w) => {
+    const item: Warehouse = { ...w, id: newId(), createdAt: todayISO() };
+    setState((s) => ({ ...s, warehouses: [item, ...s.warehouses] }));
+    void run('warehouses', supabase.from('warehouses').insert({ id: item.id, ...warehouseRow(item) }));
+    return item;
+  }, []);
+
+  const updateWarehouse = useCallback<StoreValue['updateWarehouse']>((id, patch) => {
     setState((s) => ({
       ...s,
-      containers: s.containers.filter((c) => c.id !== id),
-      secondaryClients: s.secondaryClients.filter((c) => c.containerId !== id),
-      payments: s.payments.filter((p) => p.containerId !== id),
+      warehouses: s.warehouses.map((w) => (w.id === id ? { ...w, ...patch } : w)),
     }));
-    void run('containers', supabase.from('containers').delete().eq('id', id));
+    void run('warehouses', supabase.from('warehouses').update(warehouseRow(patch)).eq('id', id));
+  }, []);
+
+  const deleteWarehouse = useCallback<StoreValue['deleteWarehouse']>((id) => {
+    setState((s) => ({
+      ...s,
+      warehouses: s.warehouses.filter((w) => w.id !== id),
+      // the cars stay, they just lose their storage site (ON DELETE SET NULL)
+      secondaryClients: s.secondaryClients.map((c) =>
+        c.warehouseId === id ? { ...c, warehouseId: undefined } : c,
+      ),
+    }));
+    void run('warehouses', supabase.from('warehouses').delete().eq('id', id));
+  }, []);
+
+  /* ---------------- car catalog ---------------- */
+
+  const addCarBrand = useCallback<StoreValue['addCarBrand']>((name) => {
+    const item: CarBrand = { id: newId(), name: name.trim(), createdAt: todayISO() };
+    setState((s) => ({
+      ...s,
+      carBrands: [...s.carBrands, item].sort((a, b) => a.name.localeCompare(b.name)),
+    }));
+    void run('car_brands', supabase.from('car_brands').insert({ id: item.id, ...carBrandRow(item) }));
+    return item;
+  }, []);
+
+  const addCarModel = useCallback<StoreValue['addCarModel']>((brandId, name) => {
+    const item: CarModel = { id: newId(), brandId, name: name.trim(), createdAt: todayISO() };
+    setState((s) => ({
+      ...s,
+      carModels: [...s.carModels, item].sort((a, b) => a.name.localeCompare(b.name)),
+    }));
+    void run('car_models', supabase.from('car_models').insert({ id: item.id, ...carModelRow(item) }));
+    return item;
+  }, []);
+
+  /* ---------------- services ---------------- */
+
+  const addService = useCallback<StoreValue['addService']>((sv) => {
+    const item: Service = { ...sv, id: newId(), createdAt: todayISO() };
+    setState((s) => ({ ...s, services: [item, ...s.services] }));
+    void run('services', supabase.from('services').insert({ id: item.id, ...serviceRow(item) }));
+    return item;
+  }, []);
+
+  const updateService = useCallback<StoreValue['updateService']>((id, patch) => {
+    setState((s) => ({
+      ...s,
+      services: s.services.map((sv) => (sv.id === id ? { ...sv, ...patch } : sv)),
+    }));
+    void run('services', supabase.from('services').update(serviceRow(patch)).eq('id', id));
+  }, []);
+
+  /** Invoices keep their own copy of every line, so they survive this untouched. */
+  const deleteService = useCallback<StoreValue['deleteService']>((id) => {
+    setState((s) => ({ ...s, services: s.services.filter((sv) => sv.id !== id) }));
+    void run('services', supabase.from('services').delete().eq('id', id));
+  }, []);
+
+  /* ---------------- invoices ---------------- */
+
+  const addInvoice = useCallback<StoreValue['addInvoice']>(
+    (inv) => {
+      const item: Invoice = {
+        ...inv,
+        id: newId(),
+        invoiceNo: nextInvoiceNo(state),
+        createdBy: actor,
+        createdAt: new Date().toISOString().slice(0, 16),
+      };
+      setState((s) => ({ ...s, invoices: [item, ...s.invoices] }));
+      void run('invoices', supabase.from('invoices').insert({ id: item.id, ...invoiceRow(item) }));
+      return item;
+    },
+    [actor, state],
+  );
+
+  const deleteInvoice = useCallback<StoreValue['deleteInvoice']>((id) => {
+    setState((s) => ({ ...s, invoices: s.invoices.filter((i) => i.id !== id) }));
+    void run('invoices', supabase.from('invoices').delete().eq('id', id));
   }, []);
 
   /* ---------------- payments ---------------- */
@@ -818,10 +959,16 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
           next.principalClients.map((c) => ({ id: c.id, ...principalRow(c) })),
         );
         await up('containers', next.containers.map((c) => ({ id: c.id, ...containerRow(c) })));
+        // Backups written before these tables existed simply carry no rows.
+        await up('warehouses', (next.warehouses ?? []).map((w) => ({ id: w.id, ...warehouseRow(w) })));
+        await up('car_brands', (next.carBrands ?? []).map((b) => ({ id: b.id, ...carBrandRow(b) })));
+        await up('car_models', (next.carModels ?? []).map((m) => ({ id: m.id, ...carModelRow(m) })));
+        await up('services', (next.services ?? []).map((sv) => ({ id: sv.id, ...serviceRow(sv) })));
         await up(
           'secondary_clients',
           next.secondaryClients.map((c) => ({ id: c.id, ...secondaryRow(c) })),
         );
+        await up('invoices', (next.invoices ?? []).map((i) => ({ id: i.id, ...invoiceRow(i) })));
         await up('payments', next.payments.map((p) => ({ id: p.id, ...paymentRow(p) })));
         await up('cash_transactions', next.cash.map((c) => ({ id: c.id, ...cashRow(c) })));
         await up('workers', next.workers.map((w) => ({ id: w.id, ...workerRow(w) })));
@@ -860,6 +1007,16 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       addContainer,
       updateContainer,
       deleteContainer,
+      addWarehouse,
+      updateWarehouse,
+      deleteWarehouse,
+      addCarBrand,
+      addCarModel,
+      addService,
+      updateService,
+      deleteService,
+      addInvoice,
+      deleteInvoice,
       addPayment,
       updatePayment,
       deletePayment,
@@ -887,7 +1044,9 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     [
       state, session, loading, update, refresh, login, registerAdmin, logout, updateOwnAccount, can,
       visiblePages, addPrincipal, updatePrincipal, deletePrincipal, addSecondary, updateSecondary,
-      deleteSecondary, addContainer, updateContainer, deleteContainer, addPayment, updatePayment,
+      deleteSecondary, addContainer, updateContainer, deleteContainer, addWarehouse, updateWarehouse,
+      deleteWarehouse, addCarBrand, addCarModel, addService, updateService, deleteService, addInvoice,
+      deleteInvoice, addPayment, updatePayment,
       deletePayment, addCash, updateCash, deleteCash, addWorker, updateWorker, deleteWorker,
       setWorkerPermissions, addRole, deleteRole, addAdvance, updateAdvance, deleteAdvance,
       addAbsence, updateAbsence, deleteAbsence, addPayroll, deletePayroll, updateCompany,

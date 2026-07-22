@@ -39,6 +39,10 @@ export function formatVersementRef(n: number): string {
   return String(Math.max(0, Math.trunc(n || 0))).padStart(5, '0');
 }
 
+export function formatInvoiceNo(n: number): string {
+  return String(Math.max(0, Math.trunc(n || 0))).padStart(4, '0');
+}
+
 /** True when a search box entry points at this reference ("12", "0012", "#0012"). */
 export function matchesRef(ref: string, query: string): boolean {
   const q = query.trim().replace(/^#/, '');

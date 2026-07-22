@@ -6,9 +6,12 @@
 import { MAX_CARS_PER_CONTAINER } from './types';
 import type {
   AppState,
+  CarModel,
   Container,
   CustomsStatus,
   ID,
+  Invoice,
+  InvoiceLine,
   Payment,
   PaymentStatus,
   PrincipalClient,
@@ -49,6 +52,54 @@ export function nextDeclarationNo(s: AppState): number {
 
 export function nextVersementRef(s: AppState): number {
   return nextSeq(s.payments.map((p) => p.refNo));
+}
+
+export function nextInvoiceNo(s: AppState): number {
+  return nextSeq(s.invoices.map((i) => i.invoiceNo));
+}
+
+/* ---------------- Invoicing ---------------- */
+
+export interface InvoiceTotals {
+  /** Services only, before tax. */
+  servicesHt: number;
+  /** Tax owed on the services. */
+  tva: number;
+  /** Services, tax included. */
+  servicesTtc: number;
+  /** The car itself — billed as-is, no tax. */
+  carPrice: number;
+  /** carPrice + servicesTtc — what the client owes for this invoice. */
+  grandTotal: number;
+}
+
+export function invoiceTotals(carPrice: number, lines: InvoiceLine[]): InvoiceTotals {
+  const servicesHt = sum(lines, (l) => l.amount * l.quantity);
+  const tva = sum(lines, (l) => l.amount * l.quantity * (l.tva / 100));
+  return {
+    servicesHt,
+    tva,
+    servicesTtc: servicesHt + tva,
+    carPrice,
+    grandTotal: carPrice + servicesHt + tva,
+  };
+}
+
+export function invoicesOfSecondary(s: AppState, secondaryId: ID): Invoice[] {
+  return s.invoices
+    .filter((i) => i.secondaryClientId === secondaryId)
+    .sort((a, b) => b.invoiceNo - a.invoiceNo);
+}
+
+export function warehouseName(s: AppState, id: ID | undefined): string {
+  if (!id) return '—';
+  return s.warehouses.find((w) => w.id === id)?.name ?? '—';
+}
+
+/** Models of one brand — what the car picker offers once a make is chosen. */
+export function modelsOfBrand(s: AppState, brandId: ID | undefined): CarModel[] {
+  if (!brandId) return [];
+  return s.carModels.filter((m) => m.brandId === brandId);
 }
 
 /* ---------------- Container ---------------- */

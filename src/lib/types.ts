@@ -55,11 +55,42 @@ export interface SecondaryClient {
   address: string;
   principalClientId: ID;
   containerId: ID;
+  /** Warehouse the car is stored in. Optional: rows created before entrepôts existed have none. */
+  warehouseId?: ID;
   car: Car;
   price: number; // agreed price for this car (DZD)
   customsStatus: CustomsStatus;
   createdAt: ISODate;
   phone?: string;
+}
+
+/* ---------- Warehouses ---------- */
+
+export interface Warehouse {
+  id: ID;
+  name: string;
+  address: string;
+  phone: string;
+  email: string;
+  description: string;
+  createdAt: ISODate;
+}
+
+/* ---------- Car catalog ---------- */
+
+/** Reference list of makes ("Renault"), reusable across secondary clients. */
+export interface CarBrand {
+  id: ID;
+  name: string;
+  createdAt: ISODate;
+}
+
+/** Reference list of models ("Clio 5"), each belonging to one brand. */
+export interface CarModel {
+  id: ID;
+  brandId: ID;
+  name: string;
+  createdAt: ISODate;
 }
 
 export interface Container {
@@ -86,6 +117,47 @@ export interface Payment {
   time: string; // HH:mm
   description?: string;
   createdBy: string; // user name
+  createdAt: ISODateTime;
+}
+
+/* ---------- Services & invoicing ---------- */
+
+/** A billable line the company sells — "Dédouanement", "Manutention"… */
+export interface Service {
+  id: ID;
+  name: string;
+  /** Unit price, excluding tax (HT). */
+  amount: number;
+  /** VAT rate in percent, e.g. 19. */
+  tva: number;
+  description: string;
+  createdAt: ISODate;
+}
+
+/**
+ * One line of an invoice. Name / amount / TVA are snapshotted at creation so a
+ * reprint years later shows what was actually billed, even if the service has
+ * been edited or deleted since.
+ */
+export interface InvoiceLine {
+  serviceId: ID;
+  name: string;
+  amount: number; // unit price HT
+  tva: number; // percent
+  quantity: number;
+}
+
+export interface Invoice {
+  id: ID;
+  /** Sequential invoice number — shown as 0001. */
+  invoiceNo: number;
+  secondaryClientId: ID;
+  date: ISODate;
+  /** The car's agreed price, snapshotted — it carries no VAT. */
+  carPrice: number;
+  lines: InvoiceLine[];
+  notes?: string;
+  createdBy: string;
   createdAt: ISODateTime;
 }
 
@@ -185,8 +257,11 @@ export const PAGE_KEYS = [
   'principalClients',
   'secondaryClients',
   'containers',
+  'warehouses',
   'customs',
   'paymentTracking',
+  'services',
+  'invoices',
   'caisse',
   'workers',
   'reports',
@@ -231,6 +306,8 @@ export const PAGE_ACTIONS: PageDef[] = [
       { key: 'edit' },
       { key: 'delete', sensitive: true },
       { key: 'createContainerInline' },
+      { key: 'createWarehouseInline' },
+      { key: 'createCarInline' },
     ],
   },
   {
@@ -245,6 +322,15 @@ export const PAGE_ACTIONS: PageDef[] = [
     ],
   },
   {
+    key: 'warehouses',
+    actions: [
+      { key: 'create' },
+      { key: 'view' },
+      { key: 'edit' },
+      { key: 'delete', sensitive: true },
+    ],
+  },
+  {
     key: 'customs',
     actions: [{ key: 'view' }, { key: 'changeStatus', sensitive: true }],
   },
@@ -255,6 +341,24 @@ export const PAGE_ACTIONS: PageDef[] = [
       { key: 'viewHistory', sensitive: true },
       { key: 'editPayment', sensitive: true },
       { key: 'deletePayment', sensitive: true },
+      { key: 'print' },
+    ],
+  },
+  {
+    key: 'services',
+    actions: [
+      { key: 'create' },
+      { key: 'view' },
+      { key: 'edit' },
+      { key: 'delete', sensitive: true },
+    ],
+  },
+  {
+    key: 'invoices',
+    actions: [
+      { key: 'create' },
+      { key: 'view' },
+      { key: 'delete', sensitive: true },
       { key: 'print' },
     ],
   },
@@ -297,6 +401,8 @@ export const PAGE_ACTIONS: PageDef[] = [
 
 export interface Company {
   logo?: string; // data URL
+  /** Electronic stamp ("cachet"), printed in the signature block. Data URL. */
+  stamp?: string;
   name: string;
   description: string;
   email: string;
@@ -337,6 +443,11 @@ export interface AppState {
   principalClients: PrincipalClient[];
   secondaryClients: SecondaryClient[];
   containers: Container[];
+  warehouses: Warehouse[];
+  carBrands: CarBrand[];
+  carModels: CarModel[];
+  services: Service[];
+  invoices: Invoice[];
   payments: Payment[];
   cash: CashTransaction[];
   workers: Worker[];

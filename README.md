@@ -13,26 +13,38 @@ de démonstration n'est embarquée dans l'application.
 
 1. Ouvrir le projet Supabase → **SQL Editor** → **New query**.
 2. Coller l'intégralité de [`supabase_schema.sql`](./supabase_schema.sql) → **Run**.
-   Base déjà en service ? Jouer plutôt
-   [`supabase_migration_versement.sql`](./supabase_migration_versement.sql), qui
-   passe la capacité à 5 véhicules et numérote l'existant.
-3. **Authentication → Providers → Email** : laisser *Confirm email* **désactivé**
+3. Puis, dans l'ordre, les migrations — elles sont toutes rejouables sans risque :
+
+   | Fichier | Apporte |
+   | --- | --- |
+   | [`supabase_migration_versement.sql`](./supabase_migration_versement.sql) | capacité 5 véhicules, n° de déclaration, référence versement |
+   | [`supabase_migration_facturation.sql`](./supabase_migration_facturation.sql) | cachet électronique, entrepôts, catalogue véhicules, services, factures |
+
+   Base déjà en service ? Ne jouer que les migrations — `supabase_schema.sql`
+   repart d'une table rase.
+4. **Authentication → Providers → Email** : laisser *Confirm email* **désactivé**
    (l'application connecte l'utilisateur immédiatement après la création du compte).
 
-Le script crée :
+Les scripts créent :
 
 | Groupe | Tables |
 | --- | --- |
 | Identité | `profiles` (miroir de `auth.users`) |
-| Catalogue | `app_pages` (les 10 interfaces), `app_actions` (tous les boutons de chaque interface) |
-| Entreprise | `company` |
-| Métier | `principal_clients`, `secondary_clients`, `containers`, `payments`, `cash_transactions` |
+| Catalogue | `app_pages` (les 13 interfaces), `app_actions` (tous les boutons de chaque interface) |
+| Entreprise | `company` (logo + cachet électronique) |
+| Métier | `principal_clients`, `secondary_clients`, `containers`, `warehouses`, `payments`, `cash_transactions` |
+| Véhicules | `car_brands`, `car_models` — le catalogue partagé des marques et modèles |
+| Facturation | `services`, `invoices` (lignes figées en `jsonb`) |
 | Employés | `roles`, `workers`, `advances`, `absences`, `payroll_runs` |
 
 Plus : le déclencheur `handle_new_user` (auth → `profiles`), les fonctions
 `is_admin()`, `email_for_identifier()`, `my_permissions()`, `has_action()`,
 la contrainte « 5 véhicules maximum par conteneur », les séquences de
-numérotation (`declaration_no_seq`, `versement_ref_seq`) et les politiques RLS.
+numérotation (`declaration_no_seq`, `versement_ref_seq`, `invoice_no_seq`) et
+les politiques RLS.
+
+> La migration facturation amorce `car_brands` / `car_models` à partir des marques
+> et modèles déjà saisis à la main : les pickers s'ouvrent avec l'existant.
 
 ## 2. Comptes
 
@@ -96,14 +108,17 @@ VITE_SUPABASE_ANON_KEY=…
 | --- | --- |
 | Tableau de bord | KPI, graphiques, alertes |
 | Clients principaux | Cartes, recherche, filtres, détails 4 onglets, versements + impression |
-| Clients secondaires | Assistant multi-étapes ; à l'étape conteneur, la création d'un conteneur est **à côté de la recherche** |
+| Clients secondaires | Assistant 6 étapes ; conteneur, entrepôt, marque et modèle se **créent sans quitter l'assistant** |
 | Conteneurs | Contenu, historique des versements (imprimable), reste par client principal |
+| Entrepôts | Sites de stockage en cartes : nom, adresse, téléphone, e-mail, description |
 | Suivi de dédouanement | Pipeline 6 statuts |
 | Suivi de versement | Versements par conteneur, historique, **impression d'un reçu ou de tout l'historique** |
+| Services | Catalogue facturable : montant HT + taux de TVA, TTC calculé en direct |
+| Facturation | Assistant 3 étapes (client → services → récapitulatif), **facture imprimable** |
 | Caisse | Dépôts / retraits, versements des conteneurs, impression |
 | Employés | Cartes avec **toutes les actions visibles** : Voir, Modifier, Permissions, Acomptes, Absences, Versement, Supprimer |
 | Rapports | Analyse par période avec détail cliquable |
-| Paramètres | Entreprise, compte, sauvegarde / restauration / synchronisation |
+| Paramètres | Entreprise, **logo et cachet électronique**, compte, sauvegarde / restauration / synchronisation |
 
 ## 7. Impression
 
@@ -118,8 +133,19 @@ Tous les documents passent par `src/components/print/PrintDocument.tsx` :
  … contenu …
 ```
 
-Deux formats : **reçu d'un versement** (bouton imprimante sur chaque ligne
-d'historique) et **historique complet** (bouton « Imprimer l'historique »).
+Trois formats : **reçu d'un versement** (bouton imprimante sur chaque ligne
+d'historique), **historique complet** (bouton « Imprimer l'historique ») et
+**facture** (`src/components/print/InvoicePrint.tsx`).
+
+Le bloc de signature de fin de page porte le **cachet électronique** téléversé
+depuis *Paramètres → Cachet électronique*. Sans cachet, le bloc garde la même
+hauteur : une page imprimée ne bouge jamais selon les réglages.
+
+La facture reprend le même en-tête puis détaille : le client facturé, le
+véhicule et son dossier (conteneur, TC, entrepôt, statut), le tableau des
+lignes — **le véhicule d'abord, sans TVA, puis chaque service avec son taux** —,
+le récapitulatif HT / TVA / TTC, le net à payer, et les emplacements
+signature + cachet.
 
 ## 8. Règles métier
 
@@ -131,6 +157,15 @@ d'historique) et **historique complet** (bouton « Imprimer l'historique »).
 - Chaque versement reçoit une **référence versement** séquentielle (`00001`,
   `00002`, …), imprimée sur le reçu et sur les historiques. La rechercher dans
   « Suivi de versement » affiche le conteneur qui la contient.
+- Chaque facture reçoit un **numéro de facture** séquentiel (`0001`, `0002`, …).
+  Ses lignes sont **figées à la création** — renommer ou supprimer un service
+  ne réécrit jamais une facture déjà émise.
+- Une facture additionne le **prix du véhicule** (sans TVA) et les **services
+  sélectionnés** (HT + TVA de chacun).
+- Les marques et modèles viennent d'un **catalogue partagé** : ce qui est saisi
+  une fois est réutilisable, et un modèle appartient toujours à une marque.
+- L'entrepôt d'un véhicule est facultatif en base : les véhicules enregistrés
+  avant l'arrivée des entrepôts restent valides, sans site de stockage.
 - Les versements sont enregistrés par couple **(conteneur, client principal)**.
 - Statuts : `Non arrivé → Arrivé → Saisie → Liquidé → Sortie → Remis au client`.
 - Un nouvel employé est créé **sans aucune permission**.

@@ -19,6 +19,11 @@ const SecondaryClients = lazy(() =>
 const Containers = lazy(() =>
   import('./pages/Containers').then((m) => ({ default: m.Containers })),
 );
+const Warehouses = lazy(() =>
+  import('./pages/Warehouses').then((m) => ({ default: m.Warehouses })),
+);
+const Services = lazy(() => import('./pages/Services').then((m) => ({ default: m.Services })));
+const Invoices = lazy(() => import('./pages/Invoices').then((m) => ({ default: m.Invoices })));
 const Customs = lazy(() => import('./pages/Customs').then((m) => ({ default: m.Customs })));
 const PaymentTracking = lazy(() =>
   import('./pages/PaymentTracking').then((m) => ({ default: m.PaymentTracking })),
@@ -99,10 +104,16 @@ export function App() {
         return <SecondaryClients />;
       case 'containers':
         return <Containers />;
+      case 'warehouses':
+        return <Warehouses />;
       case 'customs':
         return <Customs />;
       case 'paymentTracking':
         return <PaymentTracking />;
+      case 'services':
+        return <Services />;
+      case 'invoices':
+        return <Invoices />;
       case 'caisse':
         return <Caisse />;
       case 'workers':

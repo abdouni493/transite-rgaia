@@ -907,6 +907,14 @@ function PrintDialog({ container, onClose }: { container: Container | null; onCl
       <PrintDocument
         title={t('paymentReceipt')}
         reference={`${container.name} · ${container.tcNumber}`}
+        meta={[
+          { label: t('container'), value: container.name, strong: true },
+          { label: t('tcNumber'), value: container.tcNumber, mono: true },
+          {
+            label: t('totalCars'),
+            value: `${formatNumber(data.cars.length, lang)} / ${MAX_CARS_PER_CONTAINER}`,
+          },
+        ]}
       >
         {/* container identity */}
         <PrintSection>

@@ -14,6 +14,7 @@ import {
   RefreshCw,
   Save,
   ShieldAlert,
+  Stamp,
   Trash2,
   Upload,
   UserCog,
@@ -38,7 +39,7 @@ import { BrandMark } from '../components/layout/BrandMark';
 import { PageHeader } from '../components/shared';
 import type { TabDef } from '../components/ui/overlays';
 
-const MAX_LOGO_BYTES = 1024 * 1024;
+const MAX_IMAGE_BYTES = 1024 * 1024;
 
 export function Settings() {
   const { t } = useI18n();
@@ -105,6 +106,7 @@ function CompanyPanel() {
   const { state, updateCompany } = useStore();
   const toast = useToast();
   const fileRef = useRef<HTMLInputElement>(null);
+  const stampRef = useRef<HTMLInputElement>(null);
 
   const [form, setForm] = useState({
     name: state.company.name,
@@ -119,15 +121,16 @@ function CompanyPanel() {
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  const onPick = (file: File | undefined) => {
+  /** Both images are stored inline as data URLs, so they travel with a backup. */
+  const onPickImage = (file: File | undefined, field: 'logo' | 'stamp') => {
     if (!file) return;
-    if (file.size > MAX_LOGO_BYTES) {
-      toast.error(t('logoHint'));
+    if (file.size > MAX_IMAGE_BYTES) {
+      toast.error(field === 'logo' ? t('logoHint') : t('stampHint'));
       return;
     }
     const reader = new FileReader();
     reader.onload = () => {
-      updateCompany({ logo: String(reader.result) });
+      updateCompany({ [field]: String(reader.result) });
       toast.success(t('settingsSaved'));
     };
     reader.readAsDataURL(file);
@@ -172,7 +175,7 @@ function CompanyPanel() {
               accept="image/*"
               className="hidden"
               onChange={(e) => {
-                onPick(e.target.files?.[0]);
+                onPickImage(e.target.files?.[0], 'logo');
                 e.target.value = '';
               }}
             />
@@ -194,6 +197,72 @@ function CompanyPanel() {
                 className="!text-rose-600 hover:!bg-rose-50"
               >
                 {t('removeLogo')}
+              </Button>
+            )}
+          </div>
+        </div>
+      </Card>
+
+      {/* electronic stamp — printed in the signature block of every document */}
+      <Card className="p-4 sm:p-5">
+        <SectionTitle
+          icon={<Stamp size={17} />}
+          title={t('stamp')}
+          subtitle={t('stampHint')}
+          className="mb-4"
+        />
+        <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center">
+          {/* a checkerboard backdrop so a transparent PNG reads as transparent */}
+          <div
+            className="flex h-24 w-40 shrink-0 items-center justify-center rounded-2xl border border-ink-200 p-2"
+            style={{
+              backgroundImage:
+                'linear-gradient(45deg, #eef1f6 25%, transparent 25%), linear-gradient(-45deg, #eef1f6 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #eef1f6 75%), linear-gradient(-45deg, transparent 75%, #eef1f6 75%)',
+              backgroundSize: '14px 14px',
+              backgroundPosition: '0 0, 0 7px, 7px -7px, -7px 0',
+            }}
+          >
+            {state.company.stamp ? (
+              <img
+                src={state.company.stamp}
+                alt={t('stamp')}
+                className="max-h-full max-w-full object-contain"
+              />
+            ) : (
+              <span className="px-2 text-center text-2xs font-semibold text-ink-400">
+                {t('noStamp')}
+              </span>
+            )}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <input
+              ref={stampRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                onPickImage(e.target.files?.[0], 'stamp');
+                e.target.value = '';
+              }}
+            />
+            <Button
+              variant="secondary"
+              icon={<Upload size={16} />}
+              onClick={() => stampRef.current?.click()}
+            >
+              {t('uploadStamp')}
+            </Button>
+            {state.company.stamp && (
+              <Button
+                variant="ghost"
+                icon={<Trash2 size={16} />}
+                onClick={() => {
+                  updateCompany({ stamp: undefined });
+                  toast.success(t('removeStamp'));
+                }}
+                className="!text-rose-600 hover:!bg-rose-50"
+              >
+                {t('removeStamp')}
               </Button>
             )}
           </div>

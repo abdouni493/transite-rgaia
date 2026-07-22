@@ -26,6 +26,7 @@ import {
   UserRound,
   Users,
   Wallet,
+  Warehouse as WarehouseIcon,
   X,
 } from 'lucide-react';
 import { useI18n } from '../i18n/I18nProvider';
@@ -34,6 +35,7 @@ import {
   carMoney,
   containerFill,
   fullName,
+  modelsOfBrand,
   nextDeclarationNo,
   principalMoney,
   secondariesOfPrincipal,
@@ -48,11 +50,13 @@ import {
 } from '../lib/format';
 import { CUSTOMS_STATUSES, MAX_CARS_PER_CONTAINER } from '../lib/types';
 import type {
+  AppState,
   Container,
   CustomsStatus,
   Payment,
   PrincipalClient,
   SecondaryClient,
+  Warehouse,
 } from '../lib/types';
 import type { TranslationKey } from '../i18n/translations';
 import {
@@ -90,10 +94,12 @@ interface WizardForm {
   address: string;
   phone: string;
   principalClientId: string;
-  carName: string;
-  carBrand: string;
+  /** The car is picked from the shared catalog, so both makes and models stay consistent. */
+  carBrandId: string;
+  carModelId: string;
   chassisNumber: string;
   containerId: string;
+  warehouseId: string;
   price: string;
 }
 
@@ -103,10 +109,11 @@ const EMPTY_FORM: WizardForm = {
   address: '',
   phone: '',
   principalClientId: '',
-  carName: '',
-  carBrand: '',
+  carBrandId: '',
+  carModelId: '',
   chassisNumber: '',
   containerId: '',
+  warehouseId: '',
   price: '',
 };
 
@@ -115,8 +122,25 @@ const STEPS: { key: string; labelKey: TranslationKey; icon: ReactNode }[] = [
   { key: 'principal', labelKey: 'stepPrincipal', icon: <Users size={15} /> },
   { key: 'car', labelKey: 'stepCar', icon: <CarIcon size={15} /> },
   { key: 'container', labelKey: 'stepContainer', icon: <Boxes size={15} /> },
+  { key: 'warehouse', labelKey: 'stepWarehouse', icon: <WarehouseIcon size={15} /> },
   { key: 'price', labelKey: 'stepPrice', icon: <Wallet size={15} /> },
 ];
+
+/**
+ * Maps a stored car ("Renault" / "Clio 5") back onto catalog ids so the edit
+ * form opens with the right entries pre-selected. Anything the catalog does not
+ * know yet comes back empty and the user picks — or creates — it.
+ */
+function resolveCar(
+  s: AppState,
+  brand: string,
+  model: string,
+): { carBrandId: string; carModelId: string } {
+  const b = s.carBrands.find((x) => norm(x.name) === norm(brand));
+  if (!b) return { carBrandId: '', carModelId: '' };
+  const m = s.carModels.find((x) => x.brandId === b.id && norm(x.name) === norm(model));
+  return { carBrandId: b.id, carModelId: m?.id ?? '' };
+}
 
 /* ============================================================
    Page
@@ -144,6 +168,7 @@ export function SecondaryClients() {
         car: sc,
         money: carMoney(state, sc),
         container: state.containers.find((c) => c.id === sc.containerId),
+        warehouse: state.warehouses.find((w) => w.id === sc.warehouseId),
         principal: state.principalClients.find((p) => p.id === sc.principalClientId),
       })),
     [state],
@@ -343,6 +368,7 @@ export function SecondaryClients() {
                   car={r.car}
                   money={r.money}
                   container={r.container}
+                  warehouse={r.warehouse}
                   principal={r.principal}
                   onView={can('secondaryClients', 'view') ? () => setDetail(r.car) : undefined}
                   onEdit={can('secondaryClients', 'edit') ? () => openEdit(r.car) : undefined}
@@ -381,6 +407,7 @@ function SecondaryCard({
   car,
   money,
   container,
+  warehouse,
   principal,
   onView,
   onEdit,
@@ -389,6 +416,7 @@ function SecondaryCard({
   car: SecondaryClient;
   money: ReturnType<typeof carMoney>;
   container?: Container;
+  warehouse?: Warehouse;
   principal?: PrincipalClient;
   onView?: () => void;
   onEdit?: () => void;
@@ -440,8 +468,17 @@ function SecondaryCard({
             value={principal ? fullName(principal) : '—'}
             icon={<Users size={11} />}
           />
+          <DataPoint
+            label={t('warehouse')}
+            value={warehouse?.name ?? '—'}
+            icon={<WarehouseIcon size={11} />}
+          />
           <DataPoint label={t('price')} value={fm(car.price)} icon={<Tag size={11} />} />
-          <DataPoint label={t('status')} value={<PaymentBadge status={money.status} />} />
+          <DataPoint
+            label={t('status')}
+            value={<PaymentBadge status={money.status} />}
+            className="col-span-2"
+          />
         </div>
 
         <MoneySummary money={money} compact />
@@ -530,6 +567,205 @@ function StepIndicator({ current }: { current: number }) {
 }
 
 /* ============================================================
+   Catalog picker — search an existing entry or add one on the spot.
+
+   Backs both halves of the car step: makes ("Renault") and models
+   ("Clio 5"). Everything the office types once is reusable next time.
+   ============================================================ */
+
+function NamePicker({
+  label,
+  icon,
+  options,
+  value,
+  onChange,
+  canCreate,
+  onCreate,
+  searchPlaceholder,
+  emptyText,
+  createLabel,
+  duplicateMessage,
+  disabled,
+  disabledHint,
+  error,
+}: {
+  label: string;
+  icon: ReactNode;
+  options: { id: string; name: string }[];
+  value: string;
+  onChange: (id: string) => void;
+  canCreate: boolean;
+  onCreate: (name: string) => string;
+  searchPlaceholder: string;
+  emptyText: string;
+  createLabel: string;
+  duplicateMessage: string;
+  disabled?: boolean;
+  disabledHint?: string;
+  error?: string;
+}) {
+  const { t } = useI18n();
+  const toast = useToast();
+  const [query, setQuery] = useState('');
+  const [adding, setAdding] = useState(false);
+  const [draft, setDraft] = useState('');
+  const [draftError, setDraftError] = useState('');
+
+  const selected = options.find((o) => o.id === value);
+
+  const results = useMemo(() => {
+    const q = norm(query);
+    return options.filter((o) => !q || norm(o.name).includes(q));
+  }, [options, query]);
+
+  const reset = () => {
+    setAdding(false);
+    setDraft('');
+    setDraftError('');
+    setQuery('');
+  };
+
+  const create = () => {
+    const name = draft.trim();
+    if (!name) {
+      setDraftError(t('requiredField'));
+      return;
+    }
+    if (options.some((o) => norm(o.name) === norm(name))) {
+      setDraftError(duplicateMessage);
+      return;
+    }
+    onChange(onCreate(name));
+    reset();
+    toast.success(createLabel);
+  };
+
+  if (disabled) {
+    return (
+      <div>
+        <p className="label">{label}</p>
+        <div className="rounded-2xl border border-dashed border-ink-200 bg-ink-50/60 px-4 py-5 text-center text-xs font-semibold text-ink-400">
+          {disabledHint}
+        </div>
+      </div>
+    );
+  }
+
+  /* Chosen: collapse to a single row so the step stays short. */
+  if (selected) {
+    return (
+      <div>
+        <p className="label">{label}</p>
+        <div className="flex items-center gap-3 rounded-2xl border border-brand-500 bg-brand-50/70 p-3 ring-4 ring-brand-500/10">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-grad-brand text-white">
+            {icon}
+          </span>
+          <p className="min-w-0 flex-1 truncate text-[14px] font-extrabold text-ink-900">
+            {selected.name}
+          </p>
+          <Button size="xs" variant="secondary" onClick={() => onChange('')}>
+            {t('clear')}
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <p className="label">{label}</p>
+      <div className="space-y-2.5">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <SearchBar
+            value={query}
+            onChange={setQuery}
+            placeholder={searchPlaceholder}
+            className="min-w-0 flex-1"
+          />
+          {canCreate && (
+            <Button
+              type="button"
+              size="sm"
+              variant={adding ? 'secondary' : 'primary'}
+              icon={adding ? <X size={15} /> : <Plus size={15} />}
+              className="shrink-0"
+              onClick={() => {
+                setDraftError('');
+                setDraft(adding ? '' : query);
+                setAdding((v) => !v);
+              }}
+            >
+              {adding ? t('cancel') : t('add')}
+            </Button>
+          )}
+        </div>
+
+        <AnimatePresence initial={false}>
+          {adding && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+              className="overflow-hidden"
+            >
+              <div className="rounded-2xl border border-brand-200 bg-grad-brand-soft p-3.5">
+                <Input
+                  label={createLabel}
+                  value={draft}
+                  onChange={(e) => {
+                    setDraft(e.target.value);
+                    setDraftError('');
+                  }}
+                  onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), create())}
+                  error={draftError || undefined}
+                  icon={icon}
+                  autoFocus
+                />
+                <div className="mt-3 flex justify-end gap-2">
+                  <Button size="sm" variant="secondary" onClick={reset}>
+                    {t('cancel')}
+                  </Button>
+                  <Button size="sm" icon={<Plus size={15} />} onClick={create}>
+                    {t('create')}
+                  </Button>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <div className="max-h-[13rem] space-y-1.5 overflow-y-auto pe-1">
+          {results.length === 0 ? (
+            <p className="rounded-xl bg-ink-50 px-3 py-4 text-center text-xs font-semibold text-ink-400">
+              {emptyText}
+            </p>
+          ) : (
+            results.map((o) => (
+              <button
+                key={o.id}
+                type="button"
+                aria-label={o.name}
+                onClick={() => onChange(o.id)}
+                className="flex w-full cursor-pointer items-center gap-2.5 rounded-xl border border-ink-200 bg-white p-2.5 text-start transition-all duration-200 hover:border-ink-300 hover:bg-ink-50"
+              >
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-ink-100 text-ink-500">
+                  {icon}
+                </span>
+                <span className="min-w-0 flex-1 truncate text-[13px] font-bold text-ink-900">
+                  {o.name}
+                </span>
+              </button>
+            ))
+          )}
+        </div>
+      </div>
+      {error && <p className="mt-1.5 text-xs font-medium text-rose-600">{error}</p>}
+    </div>
+  );
+}
+
+/* ============================================================
    Create wizard / edit form — one dialog, two modes
    ============================================================ */
 
@@ -543,7 +779,16 @@ function SecondaryDialog({
   onClose: () => void;
 }) {
   const { t, lang, isRtl } = useI18n();
-  const { state, can, addSecondary, updateSecondary, addContainer } = useStore();
+  const {
+    state,
+    can,
+    addSecondary,
+    updateSecondary,
+    addContainer,
+    addWarehouse,
+    addCarBrand,
+    addCarModel,
+  } = useStore();
   const toast = useToast();
   const reduce = useReducedMotion();
 
@@ -564,6 +809,11 @@ function SecondaryDialog({
   const [ncTc, setNcTc] = useState('');
   const [ncErrors, setNcErrors] = useState<Record<string, string>>({});
 
+  const [warehouseQuery, setWarehouseQuery] = useState('');
+  const [nwOpen, setNwOpen] = useState(false);
+  const [nwForm, setNwForm] = useState({ name: '', address: '', phone: '', email: '' });
+  const [nwErrors, setNwErrors] = useState<Record<string, string>>({});
+
   const isEdit = !!editing;
 
   /* Re-seed whenever the dialog target changes. */
@@ -579,6 +829,10 @@ function SecondaryDialog({
     setNcName('');
     setNcTc('');
     setNcErrors({});
+    setWarehouseQuery('');
+    setNwOpen(false);
+    setNwForm({ name: '', address: '', phone: '', email: '' });
+    setNwErrors({});
     setPickingPrincipal(!editing);
     setForm(
       editing
@@ -588,10 +842,12 @@ function SecondaryDialog({
             address: editing.address,
             phone: editing.phone ?? '',
             principalClientId: editing.principalClientId,
-            carName: editing.car.name,
-            carBrand: editing.car.brand,
+            // The catalog was seeded from the existing rows, so an older car's
+            // make and model resolve straight back to their catalog entries.
+            ...resolveCar(state, editing.car.brand, editing.car.name),
             chassisNumber: editing.car.chassisNumber,
             containerId: editing.containerId,
+            warehouseId: editing.warehouseId ?? '',
             price: String(editing.price),
           }
         : EMPTY_FORM,
@@ -619,8 +875,22 @@ function SecondaryDialog({
       .map((c) => ({ container: c, fill: containerFill(state, c.id) }));
   }, [state, containerQuery]);
 
+  const warehouseResults = useMemo(() => {
+    const q = norm(warehouseQuery);
+    return state.warehouses.filter(
+      (w) => !q || norm(w.name).includes(q) || norm(w.address).includes(q),
+    );
+  }, [state.warehouses, warehouseQuery]);
+
   const selectedPrincipal = state.principalClients.find((p) => p.id === form.principalClientId);
   const selectedContainer = state.containers.find((c) => c.id === form.containerId);
+  const selectedWarehouse = state.warehouses.find((w) => w.id === form.warehouseId);
+  const selectedBrand = state.carBrands.find((b) => b.id === form.carBrandId);
+  const selectedModel = state.carModels.find((m) => m.id === form.carModelId);
+  const brandModels = useMemo(
+    () => modelsOfBrand(state, form.carBrandId),
+    [state, form.carBrandId],
+  );
   const numericPrice = Number(form.price.replace(/\s/g, ''));
 
   /** A container is blocked when full — unless the car being edited already sits in it. */
@@ -640,15 +910,16 @@ function SecondaryDialog({
     }
     if (which === 1 && !form.principalClientId) e.principalClientId = t('selectPrincipalFirst');
     if (which === 2) {
-      if (!form.carName.trim()) e.carName = t('requiredField');
-      if (!form.carBrand.trim()) e.carBrand = t('requiredField');
+      if (!form.carBrandId) e.carBrand = t('selectCarBrand');
+      if (!form.carModelId) e.carName = t('selectCarName');
       if (!form.chassisNumber.trim()) e.chassisNumber = t('requiredField');
     }
     if (which === 3) {
       if (!form.containerId) e.containerId = t('selectContainerFirst');
       else if (isBlocked(form.containerId)) e.containerId = t('containerFullError');
     }
-    if (which === 4) {
+    if (which === 4 && !form.warehouseId) e.warehouseId = t('selectWarehouseFirst');
+    if (which === 5) {
       if (!form.price.trim() || Number.isNaN(numericPrice) || numericPrice <= 0)
         e.price = t('invalidNumber');
     }
@@ -676,6 +947,8 @@ function SecondaryDialog({
     setStep((s) => Math.max(0, s - 1));
   };
 
+  /* Catalog ids become plain names on the row: a car keeps the wording it was
+     filed under even if the catalog entry is renamed later. */
   const payload = () => ({
     firstName: form.firstName.trim(),
     lastName: form.lastName.trim(),
@@ -683,16 +956,17 @@ function SecondaryDialog({
     phone: form.phone.trim() || undefined,
     principalClientId: form.principalClientId,
     containerId: form.containerId,
+    warehouseId: form.warehouseId || undefined,
     car: {
-      name: form.carName.trim(),
-      brand: form.carBrand.trim(),
+      name: selectedModel?.name ?? '',
+      brand: selectedBrand?.name ?? '',
       chassisNumber: form.chassisNumber.trim(),
     },
     price: numericPrice,
   });
 
   const submitCreate = () => {
-    const e = validate(4);
+    const e = validate(5);
     setErrors(e);
     if (Object.keys(e).length) return;
     const created = addSecondary(payload());
@@ -730,6 +1004,31 @@ function SecondaryDialog({
     setNcTc('');
     setContainerQuery('');
     toast.success(t('containerAutoSelected'));
+  };
+
+  const createWarehouseInline = () => {
+    const e: Record<string, string> = {};
+    if (!nwForm.name.trim()) e.name = t('requiredField');
+    if (!nwForm.address.trim()) e.address = t('requiredField');
+    setNwErrors(e);
+    if (Object.keys(e).length) return;
+    const created = addWarehouse({
+      name: nwForm.name.trim(),
+      address: nwForm.address.trim(),
+      phone: nwForm.phone.trim(),
+      email: nwForm.email.trim(),
+      description: '',
+    });
+    setForm((f) => ({ ...f, warehouseId: created.id }));
+    setErrors((prev) => {
+      const next = { ...prev };
+      delete next.warehouseId;
+      return next;
+    });
+    setNwOpen(false);
+    setNwForm({ name: '', address: '', phone: '', email: '' });
+    setWarehouseQuery('');
+    toast.success(t('warehouseAutoSelected'));
   };
 
   /* ---------- shared field groups ---------- */
@@ -772,25 +1071,49 @@ function SecondaryDialog({
     </div>
   );
 
+  const canCreateCar = can('secondaryClients', 'createCarInline');
+
   const carFields = (
     <div className="space-y-4">
-      <div className="grid gap-4 sm:grid-cols-2">
-        <Input
-          label={t('carBrand')}
-          value={form.carBrand}
-          onChange={(ev) => setForm({ ...form, carBrand: ev.target.value })}
-          error={errors.carBrand}
-          icon={<CarIcon size={16} />}
-          required
-        />
-        <Input
-          label={t('carName')}
-          value={form.carName}
-          onChange={(ev) => setForm({ ...form, carName: ev.target.value })}
-          error={errors.carName}
-          required
-        />
-      </div>
+      <NamePicker
+        label={t('carBrand')}
+        icon={<Tag size={16} />}
+        options={state.carBrands}
+        value={form.carBrandId}
+        // switching make invalidates the model underneath it
+        onChange={(id) => {
+          setForm({ ...form, carBrandId: id, carModelId: '' });
+          setErrors({});
+        }}
+        canCreate={canCreateCar}
+        onCreate={(name) => addCarBrand(name).id}
+        searchPlaceholder={t('searchBrandPlaceholder')}
+        emptyText={t('noBrandsYet')}
+        createLabel={t('newCarBrand')}
+        duplicateMessage={t('brandExists')}
+        error={errors.carBrand}
+      />
+
+      <NamePicker
+        label={t('carName')}
+        icon={<CarIcon size={16} />}
+        options={brandModels}
+        value={form.carModelId}
+        onChange={(id) => {
+          setForm({ ...form, carModelId: id });
+          setErrors({});
+        }}
+        canCreate={canCreateCar}
+        onCreate={(name) => addCarModel(form.carBrandId, name).id}
+        searchPlaceholder={t('searchModelPlaceholder')}
+        emptyText={t('noModelsYet')}
+        createLabel={t('newCarName')}
+        duplicateMessage={t('carNameExists')}
+        disabled={!form.carBrandId}
+        disabledHint={t('selectBrandFirst')}
+        error={errors.carName}
+      />
+
       <Input
         label={t('chassisNumber')}
         dir="ltr"
@@ -1057,6 +1380,155 @@ function SecondaryDialog({
     </div>
   );
 
+  const warehousePicker = (
+    <div className="space-y-3">
+      {/* Same shape as the container step: search what exists, or add a site. */}
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+        <SearchBar
+          value={warehouseQuery}
+          onChange={setWarehouseQuery}
+          placeholder={t('searchWarehousePlaceholder')}
+          className="min-w-0 flex-1"
+        />
+        {can('secondaryClients', 'createWarehouseInline') && (
+          <Button
+            type="button"
+            variant={nwOpen ? 'secondary' : 'primary'}
+            icon={nwOpen ? <X size={15} /> : <Plus size={15} />}
+            className="shrink-0"
+            onClick={() => {
+              setNwErrors({});
+              setNwOpen((v) => !v);
+            }}
+          >
+            {nwOpen ? t('cancel') : t('newWarehouse')}
+          </Button>
+        )}
+      </div>
+
+      {can('secondaryClients', 'createWarehouseInline') && (
+        <AnimatePresence initial={false}>
+          {nwOpen && (
+            <motion.div
+              key="nw-form"
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={{ duration: 0.24, ease: [0.16, 1, 0.3, 1] }}
+              className="overflow-hidden"
+            >
+              <div className="rounded-2xl border border-brand-200 bg-grad-brand-soft p-3.5">
+                <p className="mb-3 flex items-center gap-2 text-[13px] font-bold text-ink-900">
+                  <Plus size={15} className="text-brand-600" />
+                  {t('newWarehouse')}
+                </p>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Input
+                    label={t('warehouseName')}
+                    value={nwForm.name}
+                    onChange={(ev) => setNwForm({ ...nwForm, name: ev.target.value })}
+                    error={nwErrors.name}
+                    icon={<WarehouseIcon size={16} />}
+                    required
+                  />
+                  <Input
+                    label={t('address')}
+                    value={nwForm.address}
+                    onChange={(ev) => setNwForm({ ...nwForm, address: ev.target.value })}
+                    error={nwErrors.address}
+                    icon={<MapPin size={16} />}
+                    required
+                  />
+                  <Input
+                    label={`${t('phone')} (${t('optional')})`}
+                    type="tel"
+                    dir="ltr"
+                    value={nwForm.phone}
+                    onChange={(ev) => setNwForm({ ...nwForm, phone: ev.target.value })}
+                    icon={<Phone size={16} />}
+                  />
+                  <Input
+                    label={`${t('email')} (${t('optional')})`}
+                    type="email"
+                    dir="ltr"
+                    value={nwForm.email}
+                    onChange={(ev) => setNwForm({ ...nwForm, email: ev.target.value })}
+                  />
+                </div>
+                <div className="mt-3 flex justify-end gap-2">
+                  <Button size="sm" variant="secondary" onClick={() => setNwOpen(false)}>
+                    {t('cancel')}
+                  </Button>
+                  <Button size="sm" icon={<Plus size={15} />} onClick={createWarehouseInline}>
+                    {t('create')}
+                  </Button>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      )}
+
+      <p className="text-xs text-ink-500">{t('findWarehouseHint')}</p>
+
+      <div className="max-h-[15rem] space-y-2 overflow-y-auto pe-1">
+        {warehouseResults.length === 0 ? (
+          <EmptyState
+            icon={<WarehouseIcon size={24} />}
+            title={state.warehouses.length ? t('noResults') : t('noWarehouses')}
+            hint={state.warehouses.length ? t('noResultsHint') : t('noWarehousesHint')}
+          />
+        ) : (
+          warehouseResults.map((w) => {
+            const on = w.id === form.warehouseId;
+            return (
+              <button
+                key={w.id}
+                type="button"
+                aria-label={w.name}
+                aria-pressed={on}
+                onClick={() => {
+                  setForm({ ...form, warehouseId: w.id });
+                  setErrors({});
+                }}
+                className={cx(
+                  'flex w-full cursor-pointer items-center gap-3 rounded-xl border p-3 text-start transition-all duration-200',
+                  on
+                    ? 'border-brand-500 bg-brand-50/70 ring-4 ring-brand-500/10'
+                    : 'border-ink-200 bg-white hover:border-ink-300 hover:bg-ink-50',
+                )}
+              >
+                <span
+                  className={cx(
+                    'flex h-9 w-9 shrink-0 items-center justify-center rounded-xl',
+                    on ? 'bg-grad-brand text-white' : 'bg-ink-100 text-ink-500',
+                  )}
+                >
+                  <WarehouseIcon size={17} />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[13px] font-extrabold text-ink-900">
+                    {w.name}
+                  </span>
+                  <span className="block truncate text-2xs text-ink-500">{w.address}</span>
+                </span>
+                {on && (
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-grad-brand text-white">
+                    <Check size={14} strokeWidth={3} />
+                  </span>
+                )}
+              </button>
+            );
+          })
+        )}
+      </div>
+
+      {errors.warehouseId && (
+        <p className="text-xs font-medium text-rose-600">{errors.warehouseId}</p>
+      )}
+    </div>
+  );
+
   const review = (
     <div className="grid gap-2.5 sm:grid-cols-2">
       <DataPoint
@@ -1079,8 +1551,17 @@ function SecondaryDialog({
         icon={<Boxes size={11} />}
       />
       <DataPoint
+        label={t('warehouse')}
+        value={selectedWarehouse ? selectedWarehouse.name : '—'}
+        icon={<WarehouseIcon size={11} />}
+      />
+      <DataPoint
         label={t('car')}
-        value={`${form.carBrand} ${form.carName}`}
+        value={
+          selectedBrand || selectedModel
+            ? `${selectedBrand?.name ?? ''} ${selectedModel?.name ?? ''}`.trim()
+            : '—'
+        }
         icon={<CarIcon size={11} />}
       />
       <DataPoint label={t('chassisNumber')} value={form.chassisNumber || '—'} mono />
@@ -1170,6 +1651,12 @@ function SecondaryDialog({
           </section>
           <section>
             <p className="mb-2.5 text-2xs font-bold uppercase tracking-wide text-ink-400">
+              {t('warehouse')}
+            </p>
+            {warehousePicker}
+          </section>
+          <section>
+            <p className="mb-2.5 text-2xs font-bold uppercase tracking-wide text-ink-400">
               {t('stepPrice')}
             </p>
             {priceField}
@@ -1191,7 +1678,8 @@ function SecondaryDialog({
               {step === 1 && principalPicker}
               {step === 2 && carFields}
               {step === 3 && containerPicker}
-              {step === 4 && (
+              {step === 4 && warehousePicker}
+              {step === 5 && (
                 <div className="space-y-4">
                   {priceField}
                   <div>
@@ -1249,6 +1737,7 @@ function SecondaryDetail({
     return {
       principal,
       container,
+      warehouse: state.warehouses.find((w) => w.id === car.warehouseId),
       money: carMoney(state, car),
       principalM: principal ? principalMoney(state, principal.id) : null,
       principalCars: principal ? secondariesOfPrincipal(state, principal.id).length : 0,
@@ -1357,6 +1846,16 @@ function SecondaryDetail({
                     label={t('tcNumber')}
                     value={data.container?.tcNumber ?? '—'}
                     mono
+                  />
+                  <DataPoint
+                    label={t('warehouse')}
+                    value={data.warehouse?.name ?? t('noWarehouseAssigned')}
+                    icon={<WarehouseIcon size={11} />}
+                  />
+                  <DataPoint
+                    label={t('address')}
+                    value={data.warehouse?.address ?? '—'}
+                    icon={<MapPin size={11} />}
                   />
                 </div>
               </div>
