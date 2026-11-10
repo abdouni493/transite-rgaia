@@ -442,8 +442,8 @@ export const payrollRow = (p: Partial<PayrollRun>) => ({
 });
 
 export const companyRow = (c: Partial<Company>) => ({
-  ...(c.logo !== undefined && { logo: c.logo ?? null }),
-  ...(c.stamp !== undefined && { stamp: c.stamp ?? null }),
+  ...('logo' in c && { logo: c.logo ?? null }),
+  ...('stamp' in c && { stamp: c.stamp ?? null }),
   ...(c.name !== undefined && { name: c.name }),
   ...(c.description !== undefined && { description: c.description }),
   ...(c.email !== undefined && { email: c.email }),
