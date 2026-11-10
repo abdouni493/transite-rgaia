@@ -38,13 +38,14 @@ import {
   Textarea,
   cx,
 } from '../components/ui/primitives';
-import { Modal, Tabs, useConfirm, useToast } from '../components/ui/overlays';
+import { DropdownMenu, Modal, Tabs, useConfirm, useToast } from '../components/ui/overlays';
 import { DataPoint, PageHeader, StatCard } from '../components/shared';
 import {
   PaymentReceiptDialog,
   PaymentsPrintDialog,
   type PaymentsPrintScope,
 } from '../components/print/PaymentPrints';
+import { CashPrintDialog, type CashPrintKind } from '../components/print/CashPrints';
 
 type Period = 'today' | 'lastWeek' | 'lastMonth' | 'custom';
 
@@ -320,6 +321,8 @@ export function Caisse() {
               {activeTab === 'transactions' && (
                 <TransactionsTable
                   rows={cashRows}
+                  periodLabel={periodLabel}
+                  balance={balance}
                   onDelete={can('caisse', 'deleteTransaction') ? handleDelete : undefined}
                 />
               )}
@@ -348,23 +351,85 @@ export function Caisse() {
 
 function TransactionsTable({
   rows,
+  periodLabel,
+  balance,
   onDelete,
 }: {
   rows: CashTransaction[];
+  periodLabel: string;
+  balance: number;
   onDelete?: (tx: CashTransaction) => void;
 }) {
   const { t, lang } = useI18n();
   const cur = t('currency');
   const fm = (n: number) => formatMoney(n, lang, cur);
 
+  const [printKind, setPrintKind] = useState<CashPrintKind | null>(null);
+
+  const depositCount = rows.filter((r) => r.kind === 'deposit').length;
+  const withdrawCount = rows.filter((r) => r.kind === 'withdraw').length;
+
+  const printScope =
+    printKind === null
+      ? null
+      : {
+          kind: printKind,
+          rows: rows.filter((r) => printKind === 'all' || r.kind === printKind),
+          periodLabel,
+          balance,
+        };
+
+  const printMenu = (
+    <>
+      <div className="flex justify-end px-5 pb-3">
+        <DropdownMenu
+          align="end"
+          header={t('printTransactions')}
+          items={[
+            {
+              key: 'all',
+              label: `${t('allTransactions')} (${rows.length})`,
+              icon: <Receipt size={15} />,
+              onClick: () => setPrintKind('all'),
+            },
+            {
+              key: 'deposit',
+              label: `${t('depositsOnly')} (${depositCount})`,
+              icon: <ArrowDownLeft size={15} />,
+              onClick: () => setPrintKind('deposit'),
+            },
+            {
+              key: 'withdraw',
+              label: `${t('withdrawalsOnly')} (${withdrawCount})`,
+              icon: <ArrowUpRight size={15} />,
+              onClick: () => setPrintKind('withdraw'),
+            },
+          ]}
+          trigger={
+            <Button size="sm" variant="secondary" icon={<Printer size={15} />}>
+              {t('printTransactions')}
+            </Button>
+          }
+        />
+      </div>
+      <CashPrintDialog open={printKind !== null} onClose={() => setPrintKind(null)} scope={printScope} />
+    </>
+  );
+
   if (rows.length === 0) {
-    return <EmptyState icon={<Receipt size={28} />} title={t('empty')} hint={t('noDataInPeriod')} />;
+    return (
+      <div>
+        {printMenu}
+        <EmptyState icon={<Receipt size={28} />} title={t('empty')} hint={t('noDataInPeriod')} />
+      </div>
+    );
   }
 
   const total = rows.reduce((a, r) => a + (r.kind === 'deposit' ? r.amount : -r.amount), 0);
 
   return (
     <div className="overflow-x-auto">
+      {printMenu}
       <table className="w-full min-w-[44rem] text-sm">
         <thead>
           <tr className="border-b border-ink-200/70 bg-ink-50/60 text-2xs uppercase tracking-wide text-ink-500">
