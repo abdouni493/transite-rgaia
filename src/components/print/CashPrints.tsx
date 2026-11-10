@@ -13,6 +13,8 @@ import { amountInWords } from '../../lib/amountInWords';
 import { formatDate, formatMoney } from '../../lib/format';
 import type { CashKind, CashTransaction } from '../../lib/types';
 import {
+  HeroAmount,
+  InfoCell,
   PrintDocument,
   PrintPreview,
   PrintSection,
@@ -195,6 +197,66 @@ export function CashPrintDialog({
             </div>
           </PrintSection>
         )}
+
+        <PrintSignatures />
+      </PrintDocument>
+    </PrintPreview>
+  );
+}
+
+/* ============================================================
+   Single movement → receipt
+   ============================================================ */
+
+export function CashReceiptDialog({
+  tx,
+  onClose,
+}: {
+  tx: CashTransaction | null;
+  onClose: () => void;
+}) {
+  const { t, lang } = useI18n();
+  const cur = t('currency');
+  const fm = (n: number) => formatMoney(n, lang, cur);
+
+  if (!tx) return null;
+
+  const isIn = tx.kind === 'deposit';
+  const kindLabel = t(isIn ? 'deposit' : 'withdraw');
+  const title = `${t('cashStatement')} — ${kindLabel}`;
+
+  return (
+    <PrintPreview
+      open={!!tx}
+      onClose={onClose}
+      heading={title}
+      subheading={`${formatDate(tx.date, lang)} · ${tx.time} · ${fm(tx.amount)}`}
+    >
+      <PrintDocument
+        title={title}
+        meta={[
+          { label: t('movementType'), value: kindLabel, strong: true },
+          { label: t('date'), value: `${formatDate(tx.date, lang)} · ${tx.time}` },
+        ]}
+      >
+        {/* ---------- the amount: the point of the document ---------- */}
+        <HeroAmount
+          label={isIn ? t('totalDeposits') : t('totalWithdrawals')}
+          value={`${isIn ? '+' : '−'}${fm(tx.amount)}`}
+          words={amountInWords(tx.amount, lang, cur)}
+          wordsLabel={t('amountInWords')}
+        />
+
+        {/* ---------- how it was recorded ---------- */}
+        <PrintSection title={t('information')}>
+          <div className="tp-box grid grid-cols-2 gap-x-4 gap-y-2 rounded-[2px] p-3 sm:grid-cols-4">
+            <InfoCell label={t('movementType')} value={kindLabel} />
+            <InfoCell label={t('date')} value={formatDate(tx.date, lang)} />
+            <InfoCell label={t('time')} value={tx.time} />
+            <InfoCell label={t('by')} value={tx.createdBy || '—'} />
+            <InfoCell label={t('description')} value={tx.description || '—'} />
+          </div>
+        </PrintSection>
 
         <PrintSignatures />
       </PrintDocument>
