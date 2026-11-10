@@ -45,7 +45,11 @@ import {
   PaymentsPrintDialog,
   type PaymentsPrintScope,
 } from '../components/print/PaymentPrints';
-import { CashPrintDialog, type CashPrintKind } from '../components/print/CashPrints';
+import {
+  CashPrintDialog,
+  CashReceiptDialog,
+  type CashPrintKind,
+} from '../components/print/CashPrints';
 
 type Period = 'today' | 'lastWeek' | 'lastMonth' | 'custom';
 
@@ -365,6 +369,7 @@ function TransactionsTable({
   const fm = (n: number) => formatMoney(n, lang, cur);
 
   const [printKind, setPrintKind] = useState<CashPrintKind | null>(null);
+  const [receiptTx, setReceiptTx] = useState<CashTransaction | null>(null);
 
   const depositCount = rows.filter((r) => r.kind === 'deposit').length;
   const withdrawCount = rows.filter((r) => r.kind === 'withdraw').length;
@@ -413,6 +418,7 @@ function TransactionsTable({
         />
       </div>
       <CashPrintDialog open={printKind !== null} onClose={() => setPrintKind(null)} scope={printScope} />
+      <CashReceiptDialog tx={receiptTx} onClose={() => setReceiptTx(null)} />
     </>
   );
 
@@ -438,7 +444,7 @@ function TransactionsTable({
             <th className="px-5 py-2.5 text-start font-bold">{t('description')}</th>
             <th className="px-5 py-2.5 text-start font-bold">{t('by')}</th>
             <th className="px-5 py-2.5 text-end font-bold">{t('amount')}</th>
-            {onDelete && <th className="px-5 py-2.5 text-end font-bold">{t('actions')}</th>}
+            <th className="px-5 py-2.5 text-end font-bold">{t('actions')}</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-ink-100">
@@ -484,9 +490,16 @@ function TransactionsTable({
                     {isIn ? '+' : '−'}
                     {fm(r.amount)}
                   </td>
-                  {onDelete && (
-                    <td className="px-5 py-2.5">
-                      <div className="flex justify-end">
+                  <td className="px-5 py-2.5">
+                    <div className="flex justify-end gap-1.5">
+                      <IconButton
+                        label={t('printReceipt')}
+                        variant="secondary"
+                        onClick={() => setReceiptTx(r)}
+                      >
+                        <Printer size={14} />
+                      </IconButton>
+                      {onDelete && (
                         <IconButton
                           label={t('delete')}
                           variant="secondary"
@@ -495,9 +508,9 @@ function TransactionsTable({
                         >
                           <Trash2 size={14} />
                         </IconButton>
-                      </div>
-                    </td>
-                  )}
+                      )}
+                    </div>
+                  </td>
                 </motion.tr>
               );
             })}
@@ -517,7 +530,7 @@ function TransactionsTable({
               {total >= 0 ? '+' : '−'}
               {fm(Math.abs(total))}
             </td>
-            {onDelete && <td />}
+            <td />
           </tr>
         </tfoot>
       </table>
