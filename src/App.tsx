@@ -4,6 +4,7 @@ import { Lock, ShieldCheck } from 'lucide-react';
 import { useStore } from './store/AppStore';
 import { useI18n } from './i18n/I18nProvider';
 import { AppLayout } from './components/layout/AppLayout';
+import { RouteBoundary } from './components/RouteBoundary';
 import { Login } from './pages/Login';
 import { Dashboard } from './pages/Dashboard';
 import { EmptyState } from './components/ui/primitives';
@@ -129,9 +130,29 @@ export function App() {
 
   return (
     <AppLayout page={page} onNavigate={setPage}>
-      <Suspense fallback={<PageSkeleton />}>{render()}</Suspense>
+      <RouteBoundary resetKey={page}>
+        <Suspense fallback={<PageSkeleton />}>
+          {render()}
+          <ChunkGuardReset />
+        </Suspense>
+      </RouteBoundary>
     </AppLayout>
   );
+}
+
+/** Mounts only once the route chunk has resolved and rendered without
+    throwing, so clearing the one-shot reload guard here means the last
+    navigation genuinely succeeded. A later stale chunk can then auto-reload
+    once again. */
+function ChunkGuardReset() {
+  useEffect(() => {
+    try {
+      sessionStorage.removeItem('transitpro.chunkReload');
+    } catch {
+      /* ignore */
+    }
+  }, []);
+  return null;
 }
 
 /** Shown while the Supabase session and the first data load resolve. */
